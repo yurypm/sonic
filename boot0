@@ -46,6 +46,7 @@ fi
 
 echo "${append}" >/tmp/append
 parseenvironmentconfig >>/tmp/append
+cat /etc/cmdline | sed "/^\(${bootconfigvars// /\|}\|crashkernel\|loglevel\|ignore_loglevel\)\(\$\|=\)/d;/^\$/d" >>/tmp/append
 
 echo "root=/dev/sda1 rw loop=fs.squashfs loopfstype=squashfs apparmor=1 security=apparmor quiet" >>/tmp/append
 
