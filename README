@@ -16,7 +16,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 Contents of this package:
   scd-driver.src.rpm - Contains source for a kernel module called scd
   arista-config-DCS-7050QX-32.py - Initialization script for the DCS-7050QX-32 platform
+  arista-BUG73862-add-raven-mux-to-piix4.patch - Kernel patch for I2C fixes
   prefdl - Utility for decoding EEPROM data
+
+All Linux kernel code is licensed under the GPLv2. All other code is
+licensed under the GPLv3. Please see the LICENSE file for copies of
+both licenses.
 
 All of the code for interacting with Arista hardware is contained in
 the scd kernel module. It has been built and tested against the Linux
