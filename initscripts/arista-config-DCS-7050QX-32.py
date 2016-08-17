@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-#
 # Copyright (C) 2016 Arista Networks, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,14 +17,19 @@
 import os
 from collections import namedtuple
 
-# scd PCI address
+# Scd PCI address
 scd_address = "0000:04:00.0"
+
+# Define static types instead of enums
+qsfpType = 0
+sfpType = 1
+psuType = 2
 
 # Data structures for holding mappings of hardware addresses to
 # software functionality
 resets = {
    0x4000 : [
-      (0, "t2_reset"),
+      (0, "switch_chip_reset"),
       (2, "phy1_reset"),
       (3, "phy2_reset"),
       (4, "phy3_reset"),
@@ -57,35 +61,42 @@ for i in range(25, 32 + 1):
    else:
       addr += 0x50
 
-Gpio = namedtuple("Gpio", ["addr", "name", "ro", "activeLow"])
+Gpio = namedtuple("Gpio", ["addr", "ro", "activeLow"])
+NamedGpio = namedtuple("Gpio", Gpio._fields + ("name",) )
 sb_gpios = []
 sb_leds = []
 num_sb_fans = 4
 for i in range(num_sb_fans):
    fan_id = i + 1
-   sb_gpios.append(Gpio(203 + (6 * i), "fan%d_id0" % fan_id, True, False))
-   sb_gpios.append(Gpio(204 + (6 * i), "fan%d_id1" % fan_id, True, False))
-   sb_gpios.append(Gpio(205 + (6 * i), "fan%d_id2" % fan_id, True, False))
-   sb_gpios.append(Gpio(206 + (6 * i), "fan%d_present" % fan_id, True, True))
+   sb_gpios.append(NamedGpio(203 + (6 * i), True, False, "fan%d_id0" % fan_id, ))
+   sb_gpios.append(NamedGpio(204 + (6 * i), True, False, "fan%d_id1" % fan_id, ))
+   sb_gpios.append(NamedGpio(205 + (6 * i), True, False, "fan%d_id2" % fan_id, ))
+   sb_gpios.append(NamedGpio(206 + (6 * i), True, True,  "fan%d_present" % fan_id))
    sb_leds.append((207 + (6 * i), "fan%d_led" % fan_id))
 
+gpio_names = []
+gpio_type = []
 scd_gpios = {
    0x5000 : [
-      Gpio(0, "psu1_present", True, False),
-      Gpio(1, "psu2_present", True, False),
+      Gpio(0, True, False),
+      Gpio(1, True, False),
       ],
 }
+gpio_names.append("psu")
+gpio_type.append(psuType)
 
 addr = 0x5010
 for i in range(1, 32 + 1):
+   gpio_names.append("qsfp%d" % i)
+   gpio_type.append(qsfpType)
    scd_gpios[addr] = [
-      Gpio(0, "qsfp%d_interrupt" % i, True, True),
-      Gpio(2, "qsfp%d_present" % i, True, True),
-      Gpio(3, "qsfp%d_interrupt_changed" % i, True, False),
-      Gpio(5, "qsfp%d_present_changed" % i, True, False),
-      Gpio(6, "qsfp%d_lp_mode" % i, False, False),
-      Gpio(7, "qsfp%d_reset" % i, False, False),
-      Gpio(8, "qsfp%d_modsel" % i, False, True),
+      Gpio(0, True, True),
+      Gpio(2, True, True),
+      Gpio(3, True, False),
+      Gpio(5, True, False),
+      Gpio(6, False, False),
+      Gpio(7, False, False),
+      Gpio(8, False, True),
       ]
    addr += 0x10
 
@@ -104,11 +115,10 @@ for addr in reset_addrs:
    reset_masks.append(mask)
 
 (led_addrs, led_names) = zip(*leds)
-(sb_gpios, sb_gpio_names, sb_gpios_ro, sb_gpios_active_low) = zip(*sb_gpios)
+(sb_gpios, sb_gpios_ro, sb_gpios_active_low, sb_gpio_names) = zip(*sb_gpios)
 (sb_leds, sb_led_names) = zip(*sb_leds)
 
 gpio_addrs = sorted(scd_gpios)
-gpio_names = []
 gpio_masks = []
 gpio_ro = []
 gpio_active_low = []
@@ -116,8 +126,7 @@ for addr in gpio_addrs:
    mask = 0
    ro_mask = 0
    active_low_mask = 0
-   for (bit, name, ro, active_low) in scd_gpios[addr]:
-      gpio_names.append(name)
+   for (bit, ro, active_low) in scd_gpios[addr]:
       mask |= (1 << bit)
       if ro:
          ro_mask |= (1 << bit)
@@ -153,6 +162,7 @@ gpio_addrs = ",".join(map(formatHex, gpio_addrs))
 gpio_masks = ",".join(map(formatHex, gpio_masks))
 gpio_names = ",".join(gpio_names)
 gpio_ro = ",".join(map(formatHex, gpio_ro))
+gpio_type = ",".join(map(formatHex, gpio_type))
 gpio_active_low = ",".join(map(formatHex, gpio_active_low))
 
 sb_leds = ",".join(map(str, sb_leds))
@@ -162,20 +172,28 @@ init_trigger = 1
 
 # Install and initialize scd driver
 os.system("modprobe scd")
-os.chdir("/sys/bus/pci/drivers/scd/%s" % scd_address)
+os.system("modprobe sonic-support-driver")
+os.chdir("/sys/bus/pci/drivers/scd/%s/sonic_support_driver/sonic_support_driver"
+         % scd_address)
 
 for fname in [
    "reset_addrs", "reset_names", "reset_masks",
    "master_addrs",
    "led_addrs", "led_names",
    "sb_gpios", "sb_gpio_names", "sb_gpios_ro", "sb_gpios_active_low",
-   "gpio_addrs", "gpio_masks", "gpio_names", "gpio_ro", "gpio_active_low",
-   "num_sb_fans",
+   "gpio_addrs", "gpio_masks", "gpio_names", "gpio_ro", "gpio_type",
+   "gpio_active_low",
    "sb_leds", "sb_led_names",
-   "init_trigger", # Must always be last
    ]:
    with open(fname, "w") as f:
       f.write(str(eval(fname)))
+
+os.chdir("/sys/bus/pci/drivers/scd/%s" % scd_address)
+fname = "init_trigger"
+with open(fname, "w") as f:
+   f.write(str(eval(fname)))
+
+os.system("modprobe raven-fan-driver")
 
 # Temperature sensors
 os.system("modprobe lm73")
