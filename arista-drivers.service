@@ -1,0 +1,14 @@
+[Unit]
+Description=Arista kernel modules init
+After=local-fs.target
+ConditionKernelCommandLine=Aboot
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/share/arista/init
+TimeoutSec=0
+StandardInput=tty
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

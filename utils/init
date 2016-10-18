@@ -1,0 +1,39 @@
+#!/bin/sh
+# This script detect the platform and call the correct init script for it
+
+fatal() {
+   echo "$@"
+   exit 1
+}
+
+# guard to avoid running this script on non arista platform
+. /host/machine.conf
+[ "$aboot_vendor" = "arista" ] || fatal "Not an arista platform, skipping"
+
+eeprom_id="1-0052"
+eeprom_path="/sys/bus/i2c/drivers/eeprom/$eeprom_id/eeprom"
+prefdl_file="/tmp/prefdl"
+
+arista_dir="/usr/share/arista"
+prefdl_bin="$arista_dir/prefdl"
+init_script_path="$arista_dir/initscripts"
+
+# loading eeprom module
+modprobe eeprom
+
+# reading prefdl information
+[ -f "$eeprom_path" ] || fatal "Failed to find eeprom at $eeprom_path"
+$prefdl_bin $eeprom_path > $prefdl_file || fatal "Failed to read prefdl information"
+eval $(sed -e 's/:[[:space:]]*/=/' $prefdl_file)
+
+# checking required variables
+[ -z "$SKU" ] && fatal "Failed to get SKU information"
+[ -z "$SerialNumber" ] && fatal "Failed to get serial number"
+
+# execing init script
+init_script_path="$init_script_path/arista-config-${SKU}.py"
+if [ -f "$init_script_path" ]; then
+   python $init_script_path || fatal "Failed to init platform"
+else
+   fatal "Could not find $init_script_path"
+fi
