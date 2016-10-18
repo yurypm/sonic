@@ -1,5 +1,5 @@
-/* Copyright (c) 2016 Arista Networks, Inc.  All rights reserved.
- * Arista Networks, Inc. Confidential and Proprietary.
+/* Copyright (c) 2016 Arista Networks, Inc.
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -34,7 +34,9 @@
 #include <linux/i2c.h>
 #include <linux/pci.h>
 #include <linux/interrupt.h>
+
 #include "scd.h"
+#include "sonic-support-driver.h"
 
 #define SCD_MODULE_NAME "scd"
 
@@ -71,13 +73,8 @@
 #define NUM_SB_GPIOS 100
 #define NUM_SB_LEDS 10
 
-#define SONICDBG 1
 
-#ifdef SONICDBG
-#define DPRINT(_text) printk(KERN_DEBUG _text);
-#else
-#define DPRINT(_text) do {} while (0);
-#endif
+
 
 /* String constants for SFP/QSFP gpio names */
 static const char *qsfpGpioSuffixes[] = {
@@ -478,7 +475,7 @@ static s32 sonic_smbus_access(struct i2c_adapter *adap, u16 addr,
    return 0;
 
   fail:
-   printk("smbus access failed \n");
+   DPRINT("smbus access failed\n");
    smbus_reset(pmaster);
    master_unlock(pmaster);
    return ret;
@@ -489,6 +486,36 @@ static struct i2c_algorithm sonic_smbus_algorithm = {
    .smbus_xfer    = sonic_smbus_access,
    .functionality = sonic_smbus_func,
 };
+
+static void smbus_remove(void)
+{
+   int master_id;
+   int bus_id;
+   struct sonic_master *pmaster;
+   struct sonic_bus *bus;
+   struct list_head *ptr;
+   struct sonic_i2c_client *entry;
+
+   /* unregister all i2c clients */
+   ptr = client_list.next;
+   while (ptr != &client_list) {
+      entry = list_entry(ptr, struct sonic_i2c_client, next);
+      ptr = ptr->next;
+      i2c_unregister_device(entry->client);
+      kfree(entry);
+   }
+
+   for (master_id = 0; master_id < master_addrs[0]; master_id++) {
+      pmaster = &master[master_id];
+      if (!pmaster) {
+         continue;
+      }
+      for (bus_id = 0; bus_id < ARRAY_SIZE(master->bus); bus_id++) {
+         bus = &pmaster->bus[bus_id];
+         i2c_del_adapter(&bus->adap);
+      }
+   }
+}
 
 static s32 __init smbus_init(void)
 {
@@ -524,38 +551,16 @@ static s32 __init smbus_init(void)
          err = i2c_add_adapter(&bus->adap);
 
          if (err) {
-            return -ENODEV;
+            err = -ENODEV;
+            goto fail;
          }
       }
    }
    return 0;
-}
 
-static void smbus_remove(void)
-{
-   int master_id;
-   int bus_id;
-   struct sonic_master *pmaster;
-   struct sonic_bus *bus;
-   struct list_head *ptr;
-   struct sonic_i2c_client *entry;
-
-   /* unregister all i2c clients */
-   ptr = client_list.next;
-   while (ptr != &client_list) {
-      entry = list_entry(ptr, struct sonic_i2c_client, next);
-      ptr = ptr->next;
-      i2c_unregister_device(entry->client);
-      kfree(entry);
-   }
-
-   for (master_id = 0; master_id < master_addrs[0]; master_id++) {
-      pmaster = &master[master_id];
-      for (bus_id = 0; bus_id < ARRAY_SIZE(master->bus); bus_id++) {
-         bus = &pmaster->bus[bus_id];
-         i2c_del_adapter(&bus->adap);
-      }
-   }
+fail:
+   smbus_reset(pmaster);
+   return err;
 }
 
 static void brightness_set(struct led_classdev *led_cdev, enum led_brightness value)
@@ -589,6 +594,19 @@ static void brightness_set(struct led_classdev *led_cdev, enum led_brightness va
    scd_write_register(pdev_ref, pled->addr, reg);
 }
 
+static void led_remove(void)
+{
+   int i;
+   struct sonic_led *pled;
+   for (i = 0; i < led_addrs[0]; i++) {
+      pled = &led[i];
+      if (pled) {
+         led_classdev_unregister(&pled->cdev);
+      }
+   }
+}
+
+
 static s32 __init led_init(void)
 {
    int i;
@@ -608,17 +626,8 @@ static s32 __init led_init(void)
    return 0;
 
   fail:
+   led_remove();
    return ret;
-}
-
-static void led_remove(void)
-{
-   int i;
-   struct sonic_led *pled;
-   for (i = 0; i < led_addrs[0]; i++) {
-      pled = &led[i];
-      led_classdev_unregister(&pled->cdev);
-   }
 }
 
 static void sb_brightness_set(struct led_classdev *led_cdev,
@@ -727,6 +736,64 @@ static int direction_output(struct gpio_chip *gc, unsigned gpio_num, int val)
    return 0;
 }
 
+static void gpio_remove(void)
+{
+   int i;
+   int j;
+   int k = 0;
+   struct sonic_gpio *pgpio;
+   u32 addr;
+   char gpio_name_buffer[50];
+
+   for (i = 0; i < gpio_addrs[0]; i++) {
+      addr = gpio_addrs[i + 1];
+      pgpio = &gpio[i];
+      if (!pgpio) {
+         continue;
+      }
+      for (j = 0; j < pgpio->chip.ngpio; j++) {
+
+         strcpy(gpio_name_buffer, gpio_names[k]);
+         switch (pgpio->gpio_type) {
+         case QSFPTYPE:
+            strcat(gpio_name_buffer, qsfpGpioSuffixes[j]);
+            if (j == numQsfpBits - 1) {
+               k++;
+            }
+            break;
+         case SFPTYPE:
+            strcat(gpio_name_buffer, sfpGpioSuffixes[j]);
+            if (j == numSfpBits - 1) {
+               k++;
+            }
+            break;
+         case PSUTYPE:
+            strcat(gpio_name_buffer, psuGpioSuffixes[j]);
+            if (j == numPsuBits - 1) {
+               k++;
+            }
+            break;
+         case MUXTYPE:
+            strcat(gpio_name_buffer, muxGpioSuffixes[j]);
+            if (j == numMuxBits - 1) {
+               k++;
+            }
+            break;
+         default:
+            k++;
+            break;
+         }
+
+         sysfs_remove_link(&(pdev_ref->dev.kobj), gpio_name_buffer);
+         gpio_unexport(pgpio->chip.base + j);
+         gpio_free(pgpio->chip.base + j);
+      }
+      if (gpiochip_remove(&pgpio->chip) < 0) {
+          printk(KERN_ERR "Failed to remove GPIO chip\n");
+      }
+   }
+}
+
 static s32 __init gpio_init(void)
 {
    int i;
@@ -796,6 +863,7 @@ static s32 __init gpio_init(void)
          }
 
          desc = gpiochip_request_own_desc(&pgpio->chip, j, gpio_name_buffer);
+
          ret = gpiod_export(desc, !(pgpio->ro & mask));
          if (ret) {
             goto fail;
@@ -816,60 +884,8 @@ static s32 __init gpio_init(void)
    return 0;
 
   fail:
+   gpio_remove();
    return ret;
-}
-
-static void gpio_remove(void)
-{
-   int i;
-   int j;
-   int k = 0;
-   struct sonic_gpio *pgpio;
-   u32 addr;
-   char gpio_name_buffer[50];
-
-   for (i = 0; i < gpio_addrs[0]; i++) {
-      addr = gpio_addrs[i + 1];
-      pgpio = &gpio[i];
-      for (j = 0; j < pgpio->chip.ngpio; j++) {
-
-         strcpy(gpio_name_buffer, gpio_names[k]);
-         switch (pgpio->gpio_type) {
-         case QSFPTYPE:
-            strcat(gpio_name_buffer, qsfpGpioSuffixes[j]);
-            if (j == numQsfpBits - 1) {
-               k++;
-            }
-            break;
-         case SFPTYPE:
-            strcat(gpio_name_buffer, sfpGpioSuffixes[j]);
-            if (j == numSfpBits - 1) {
-               k++;
-            }
-            break;
-         case PSUTYPE:
-            strcat(gpio_name_buffer, psuGpioSuffixes[j]);
-            if (j == numPsuBits - 1) {
-               k++;
-            }
-            break;
-         case MUXTYPE:
-            strcat(gpio_name_buffer, muxGpioSuffixes[j]);
-            if (j == numMuxBits - 1) {
-               k++;
-            }
-            break;
-         default:
-            k++;
-            break;
-         }
-
-         sysfs_remove_link(&(pdev_ref->dev.kobj), gpio_name_buffer);
-         gpio_unexport(pgpio->chip.base + j);
-         gpio_free(pgpio->chip.base + j);
-      }
-      gpiochip_remove(&pgpio->chip);
-   }
 }
 
 static int reset_get(struct gpio_chip *gc, unsigned reset_num)
@@ -896,6 +912,31 @@ static int reset_direction_output(struct gpio_chip *gc, unsigned reset_num, int 
 {
    reset_set(gc, reset_num, val);
    return 0;
+}
+
+static void reset_remove(void)
+{
+   int i;
+   int j;
+   int k = 0;
+   struct sonic_reset *pReset;
+   u32 addr;
+   for (i = 0; i < reset_addrs[0]; i++) {
+      addr = reset_addrs[i + 1];
+      pReset = &reset[i];
+      if (!pReset) {
+         continue;
+      }
+      for (j = 0; j < pReset->chip.ngpio; j++) {
+         sysfs_remove_link(&(pdev_ref->dev.kobj), reset_names[k]);
+         gpio_unexport(pReset->chip.base + j);
+         gpio_free(pReset->chip.base + j);
+         k++;
+      }
+      if (gpiochip_remove(&pReset->chip) < 0) {
+          printk(KERN_ERR "Failed to remove GPIO chip for reset\n");
+      }
+   }
 }
 
 static s32 __init reset_init(void)
@@ -943,27 +984,8 @@ static s32 __init reset_init(void)
    return 0;
 
   fail:
+   reset_remove();
    return ret;
-}
-
-static void reset_remove(void)
-{
-   int i;
-   int j;
-   int k = 0;
-   struct sonic_reset *pReset;
-   u32 addr;
-   for (i = 0; i < reset_addrs[0]; i++) {
-      addr = reset_addrs[i + 1];
-      pReset = &reset[i];
-      for (j = 0; j < pReset->chip.ngpio; j++) {
-         sysfs_remove_link(&(pdev_ref->dev.kobj), reset_names[k]);
-         gpio_unexport(pReset->chip.base + j);
-         gpio_free(pReset->chip.base + j);
-         k++;
-      }
-      gpiochip_remove(&pReset->chip);
-   }
 }
 
 static int sb_gpio_get(struct gpio_chip *gc, unsigned gpio_num)
@@ -1003,12 +1025,34 @@ static int sb_gpio_direction_output(struct gpio_chip *gc, unsigned gpio_num, int
    return 0;
 }
 
+static void sb_gpio_remove(void)
+{
+   int i;
+   // FIXME may remove uninitialized gpios
+   if (!sb_gpios[0]) {
+      return;
+   }
+   for (i = 0; i < sb_gpio.chip.ngpio; i++) {
+      if (!sb_gpios[i]) {
+         continue;
+      }
+      sysfs_remove_link(&pdev_ref->dev.kobj, sb_gpio_names[i]);
+      gpio_unexport(sb_gpio.chip.base + i);
+      gpio_free(sb_gpio.chip.base + i);
+   }
+   if (gpiochip_remove(&(sb_gpio.chip)) < 0) {
+      printk(KERN_ERR "Failed to remove GPIO chip for reset\n");
+   }
+   release_mem_region(SB800_GPIO_BASE, SB800_GPIO_SIZE);
+}
+
+
 static s32 __init sb_gpio_init(void)
 {
    int i;
    int ret = 0;
    struct gpio_desc *desc;
-   if (sb_gpios[0] == 0) {
+   if (!sb_gpios[0]) {
       return 0;
    }
    if (!request_mem_region(SB800_GPIO_BASE, SB800_GPIO_SIZE, "SB800_GPIO")) {
@@ -1050,22 +1094,8 @@ static s32 __init sb_gpio_init(void)
    return 0;
 
   fail:
+   sb_gpio_remove();
    return ret;
-}
-
-static void sb_gpio_remove(void)
-{
-   int i;
-   if (sb_gpios[0] == 0) {
-      return;
-   }
-   for (i = 0; i < sb_gpio.chip.ngpio; i++) {
-      sysfs_remove_link(&pdev_ref->dev.kobj, sb_gpio_names[i]);
-      gpio_unexport(sb_gpio.chip.base + i);
-      gpio_free(sb_gpio.chip.base + i);
-   }
-   gpiochip_remove(&(sb_gpio.chip));
-   release_mem_region(SB800_GPIO_BASE, SB800_GPIO_SIZE);
 }
 
 static int sonic_finish_init(void)
@@ -1075,43 +1105,55 @@ static int sonic_finish_init(void)
    err = smbus_init();
    if (err) {
       printk(KERN_ERR "Error initializing SCD SMBus adapter\n");
-      return err;
+      goto fail_smbus;
    }
 
    err = led_init();
    if (err) {
       printk(KERN_ERR "Error initializing SCD LEDs\n");
-      return err;
+      goto fail_led;
    }
 
    err = sb_led_init();
    if (err) {
       printk(KERN_ERR "Error initializing SB LEDs\n");
-      return err;
+      goto fail_sb_led;
    }
 
    err = gpio_init();
    if (err) {
       printk(KERN_ERR "Error initializing GPIOs\n");
-      return err;
+      goto fail_gpio;
    }
 
    err = reset_init();
    if (err) {
       printk(KERN_ERR "Error initializing resets\n");
-      return err;
+      goto fail_reset;
    }
 
    err = sb_gpio_init();
    if (err) {
       printk(KERN_ERR "Error initializing SB GPIOs\n");
-      return err;
+      goto fail_sb_gpio;
    }
 
    initialized = 1;
    printk(KERN_INFO "sonic support initialization complete\n");
    return 0;
 
+fail_sb_gpio:
+   reset_remove();
+fail_reset:
+   gpio_remove();
+fail_gpio:
+   sb_led_remove();
+fail_sb_led:
+   led_remove();
+fail_led:
+   smbus_remove();
+fail_smbus:
+   return err;
 }
 
 static ssize_t read_u32_array(u32 array[], char *buf)
@@ -1395,7 +1437,7 @@ sonic_probe(struct pci_dev *pdev)
 
    error = sysfs_create_link(&pdev->dev.kobj, sonic_kobject, sonic_attr_group.name);
    if (error) {
-      printk("Failed to create the sonic sysfs entry link in scd driver\n");
+      printk(KERN_ERR "Failed to create the sonic sysfs entry link in scd driver\n");
       dev_err(&(pdev->dev), "sysfs_create_link() error %d\n", error);
       return;
    }
@@ -1417,7 +1459,7 @@ sonic_remove(struct pci_dev *pdev)
 
    initialized = 0;
    pdev_ref = NULL;
-   printk("Removed sonic Support Driver\n");
+   printk(KERN_INFO "Removed sonic Support Driver\n");
 }
 
 static void
@@ -1434,29 +1476,33 @@ static struct scd_sonic_ops sonic_ops = {
 
 static int __init sonic_init(void)
 {
-   int error = 0;
-   printk("Module sonic support init\n");
+   int err = 0;
+
+   printk(KERN_INFO "Module sonic support init\n");
+
    mutex_init(&sonic_mutex);
    INIT_LIST_HEAD(&client_list);
+   sonic_kobject = kobject_get(kernel_kobj);
 
-   sonic_kobject = kernel_kobj;
-   if (!sonic_kobject) {
-      return -ENOMEM;
-
-   }
-   error = sysfs_create_group(sonic_kobject, &sonic_attr_group);
-   if (error) {
+   err = sysfs_create_group(sonic_kobject, &sonic_attr_group);
+   if (err) {
       printk(KERN_ERR "Could not create sonic sysfs entries\n");
-      return -ENOENT;
+      goto fail_sysfs;
    }
 
-   error = scd_register_sonic_ops(&sonic_ops);
-   if (error) {
+   err = scd_register_sonic_ops(&sonic_ops);
+   if (err) {
       printk(KERN_WARNING "scd-sonic: scd_register_sonic_ops failed\n");
-      return -ENOENT;
+      goto fail_ops;
    }
 
-   return error;
+   return err;
+
+fail_ops:
+   sysfs_remove_group(sonic_kobject, &sonic_attr_group);
+fail_sysfs:
+   mutex_destroy(&sonic_mutex);
+   return err;
 }
 
 static void __exit sonic_exit(void)
@@ -1464,7 +1510,7 @@ static void __exit sonic_exit(void)
    scd_unregister_sonic_ops();
    sysfs_remove_group(sonic_kobject, &sonic_attr_group);
    kobject_put(sonic_kobject);
-   printk("Module sonic support driver removed\n");
+   printk(KERN_INFO "Module sonic support driver removed\n");
 }
 
 module_init(sonic_init);

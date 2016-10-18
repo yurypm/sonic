@@ -1,5 +1,4 @@
-/* Copyright (c) 2016 Arista Networks, Inc.  All rights reserved.
- * Arista Networks, Inc. Confidential and Proprietary.
+/* Copyright (c) 2016 Arista Networks, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -56,258 +55,257 @@
 
 static struct kobject *fan_kobject;
 
-#define SONICDBG 1
-
-#ifdef SONICDBG
-#define DPRINT(_text) printk(KERN_DEBUG _text);
-#else
-#define DPRINT(_text) do {} while (0);
-#endif
-
 /*
- * This function reads a byte from the crow cpld cpld
+ * This function reads a byte from the crow cpld
  */
 static s32 read_cpld(u8 reg, u8 *result)
 {
-   s32 status = 0;
-   int master = 0;
-   int bus = 1;
-   u16 addr = CPLDADDR;
+    s32 status = 0;
+    int master = 0;
+    int bus = 1;
+    u16 addr = CPLDADDR;
 
-   status = i2c_read_byte(master, bus, addr, reg, result);
+    status = i2c_read_byte(master, bus, addr, reg, result);
 
-   return status;
+    return status;
 }
 
 /*
- * This function write a byte to the crow cpld cpld
+ * This function write a byte to the crow cpld
  */
 static s32 write_cpld(u8 reg, u8 data)
 {
-   s32 status = 0;
-   int master = 0;
-   int bus = 1;
-   u16 addr = CPLDADDR;
+    s32 status = 0;
+    int master = 0;
+    int bus = 1;
+    u16 addr = CPLDADDR;
 
-   status = i2c_write_byte(master, bus, addr, reg, data);
+    status = i2c_write_byte(master, bus, addr, reg, data);
 
-   return status;
+    return status;
 }
 
 static s32 read_cpld_to_buffer(u8 reg, char *buf)
 {
-      s32 status;
-      u8 data;
-      status = read_cpld(reg, &data);
-      if (status) {
-         return status;
-      }
-      return sprintf(buf, "%02x\n", data);
+    s32 status;
+    u8 data;
+    status = read_cpld(reg, &data);
+    if (status) {
+        return status;
+    }
+    return sprintf(buf, "%02x\n", data);
 
 }
 
 static s32 write_buffer_to_cpld(u8 reg, const char *buf)
 {
-      u8 data;
-      s32 status;
-      sscanf(buf, "%hhu", &data);
-      status = write_cpld(reg, data);
-      return status;
+    u8 data;
+    s32 status;
+    sscanf(buf, "%hhu", &data);
+    status = write_cpld(reg, data);
+    return status;
 }
 
 static s32 read_led_color(u8 reg_green, u8 reg_red, char *buf, int index)
 {
-      s32 status;
-      u8 data;
-      int fanIndex = index - 1;
-      char read_value= 0;
+    s32 status;
+    u8 data;
+    int fanIndex = index - 1;
+    char read_value= 0;
 
-      status = read_cpld(reg_green, &data);
-      if (status) {
-         return status;
-      }
-      read_value = (data >> fanIndex) & 0x01;
+    status = read_cpld(reg_green, &data);
+    if (status) {
+        return status;
+    }
+    read_value = (data >> fanIndex) & 0x01;
 
-      status = read_cpld(reg_red, &data);
-      if (status) {
-         return status;
-      }
-      read_value = ((data >> fanIndex) & 0x01) << 1;
+    status = read_cpld(reg_red, &data);
+    if (status) {
+        return status;
+    }
+    read_value = ((data >> fanIndex) & 0x01) << 1;
 
-      switch (read_value) {
-      case 0:
-         status = sprintf(buf, "0\n");
-         break;
-      case 1:
-         status = sprintf(buf, "1\n");
-         break;
-      case 2:
-         status = sprintf(buf, "2\n");
-         break;
-      case 3:
-         status = sprintf(buf, "3\n");
-         break;
-      default:
-         status = sprintf(buf, "3\n");
-         break;
-      }
+    switch (read_value) {
+    case 0:
+        status = sprintf(buf, "0\n");
+        break;
+    case 1:
+        status = sprintf(buf, "1\n");
+        break;
+    case 2:
+        status = sprintf(buf, "2\n");
+        break;
+    case 3:
+    default:
+        status = sprintf(buf, "3\n");
+        break;
+    }
 
-      return status;
+    return status;
 }
 
 static s32 write_led_color(u8 reg_green, u8 reg_red, const char *buf, int index)
 {
-      s32 status;
-      u8 data;
-      u8 current_val;
-      int fanIndex = index - 1;
-      u8 green_led;
-      u8 red_led;
-      sscanf(buf, "%hhu", &data);
+    s32 status;
+    u8 data;
+    u8 red_value;
+    u8 green_value;
+    int fanIndex = index - 1;
+    u8 green_led;
+    u8 red_led;
 
-      switch (data) {
-      case 0:
-        green_led = 0;
-        red_led = 0;
-        break;
-      case 1:
+    sscanf(buf, "%hhu", &data);
+
+    switch (data) {
+    case 1:
         green_led = 1;
         red_led = 0;
         break;
-      case 2:
+    case 2:
         green_led = 0;
         red_led = 1;
         break;
-      case 3:
+    case 3:
         green_led = 1;
         red_led = 1;
         break;
-      default:
+    case 0:
+    default:
         green_led = 0;
         red_led = 0;
         break;
-      }
+    }
 
-      status = read_cpld(reg_green, &current_val);
-      if (status) {
-         return status;
-      }
-      if (green_led) {
-         current_val |= (1u << fanIndex);
-      } else {
-         current_val &= ~(1u << fanIndex);
-      }
-      status = write_cpld(reg_green, current_val);
+    status = read_cpld(reg_green, &green_value);
+    if (status) {
+        return status;
+    }
+    status = read_cpld(reg_red, &red_value);
+    if (status) {
+        return status;
+    }
 
-      status = read_cpld(reg_red, &current_val);
-      if (status) {
-         return status;
-      }
-      if (red_led) {
-         current_val |= (1u << fanIndex);
-      } else {
-         current_val &= ~(1u << fanIndex);
-      }
-      status = write_cpld(reg_red, current_val);
+    if (green_led) {
+        green_value |= (1u << fanIndex);
+    } else {
+        green_value &= ~(1u << fanIndex);
+    }
 
-      return status;
+    if (red_led) {
+        red_value |= (1u << fanIndex);
+    } else {
+        red_value &= ~(1u << fanIndex);
+    }
+
+    status = write_cpld(reg_green, green_value);
+    status |= write_cpld(reg_red, red_value);
+
+    return status;
 }
 
 static s32 read_tach(u8 tachHigh, u8 tachLow, char *buf)
 {
-      s32 status;
-      u8 dataHigh;
-      u8 dataLow;
-      u32 tachData;
-      u32 speed;
+    s32 status;
+    u8 dataHigh;
+    u8 dataLow;
+    u32 tachData;
+    u32 speed;
 
-      status = read_cpld(tachHigh, &dataHigh);
-      status |= read_cpld(tachLow, &dataLow);
-      if (status) {
-         return status;
-      }
-      tachData = (dataHigh << 8) + dataLow;
-      speed = 6000000 / tachData;
-      speed = speed / 2;
-      return sprintf(buf, "%02x\n", speed);
+    status = read_cpld(tachHigh, &dataHigh);
+    status |= read_cpld(tachLow, &dataLow);
+    if (status) {
+        return status;
+    }
+    tachData = (dataHigh << 8) + dataLow;
+    if (!tachData) {
+        tachData = 1;
+    }
+    speed = 6000000 / tachData;
+    speed = speed / 2;
+    return sprintf(buf, "%02x\n", speed);
 }
 
 static s32 read_fan_present(u8 reg, char *buf, int index)
 {
-      s32 status;
-      u8 data;
-      int fanIndex = index - 1;
-      char present = 0;
+    s32 status;
+    u8 data;
+    int fanIndex = index - 1;
+    char present = 0;
 
-      status = read_cpld(reg, &data);
-      if (status) {
-         return status;
-      }
-      present = ~(data >> fanIndex) & 0x01;
-      return sprintf(buf, "%d\n", present);
+    status = read_cpld(reg, &data);
+    if (status) {
+        return status;
+    }
+    present = ~(data >> fanIndex) & 0x01;
+    return sprintf(buf, "%d\n", present);
 }
 
-#define GENERIC_FAN_READ(_name, _dev, _reg)                                   \
-static ssize_t fan_##_name##_##_dev##_show(struct device *dev,                \
-      struct device_attribute *attr, char *buf)                               \
-{                                                                             \
-      return read_cpld_to_buffer(_reg, buf);                                  \
-}                                                                             \
+#define GENERIC_FAN_READ(_name, _dev, _reg)                                         \
+static ssize_t fan_##_name##_##_dev##_show(struct device *dev,                      \
+                                           struct device_attribute *attr,           \
+                                           char *buf)                               \
+{                                                                                   \
+    return read_cpld_to_buffer(_reg, buf);                                          \
+}                                                                                   \
 
-#define GENERIC_FAN_WRITE(_name, _dev, _reg)                                  \
-static ssize_t fan_##_name##_##_dev##_store(struct device *dev,               \
-      struct device_attribute *attr, const char *buf, size_t count)           \
-{                                                                             \
-      write_buffer_to_cpld(_reg, buf);                                        \
-      return count;                                                           \
-}                                                                             \
+#define GENERIC_FAN_WRITE(_name, _dev, _reg)                                        \
+static ssize_t fan_##_name##_##_dev##_store(struct device *dev,                     \
+                                            struct device_attribute *attr,          \
+                                            const char *buf, size_t count)          \
+{                                                                                   \
+    write_buffer_to_cpld(_reg, buf);                                                \
+    return count;                                                                   \
+}                                                                                   \
 
-#define GENERIC_LED(_name, _reg_green, _reg_red)                              \
-static ssize_t fan_##_name##_led_show(struct device *dev,                     \
-      struct device_attribute *attr, char *buf)                               \
-{                                                                             \
-      return read_led_color(_reg_green, _reg_red, buf, _name);                \
-}                                                                             \
-static ssize_t fan_##_name##_led_store(struct device *dev,                    \
-      struct device_attribute *attr, const char *buf, size_t count)           \
-{                                                                             \
-      write_led_color(_reg_green, _reg_red, buf, _name);                      \
-      return count;                                                           \
-}                                                                             \
-DEVICE_ATTR(fan##_name##_led, S_IRUGO|S_IWGRP|S_IWUSR,                        \
-      fan_##_name##_led_show, fan_##_name##_led_store);                       \
+#define GENERIC_LED(_name, _reg_green, _reg_red)                                    \
+static ssize_t fan_##_name##_led_show(struct device *dev,                           \
+                                      struct device_attribute *attr, char *buf)     \
+{                                                                                   \
+    return read_led_color(_reg_green, _reg_red, buf, _name);                        \
+}                                                                                   \
+static ssize_t fan_##_name##_led_store(struct device *dev,                          \
+                                       struct device_attribute *attr,               \
+                                       const char *buf, size_t count)               \
+{                                                                                   \
+    write_led_color(_reg_green, _reg_red, buf, _name);                              \
+    return count;                                                                   \
+}                                                                                   \
+DEVICE_ATTR(fan##_name##_led, S_IRUGO|S_IWGRP|S_IWUSR,                              \
+            fan_##_name##_led_show, fan_##_name##_led_store);                       \
 
-#define FAN_DEVICE_ATTR(_name)                                                \
-static ssize_t tach_##_name##_show(struct device *dev,                        \
-      struct device_attribute *attr, char *buf)                               \
-{                                                                             \
-      return read_tach(TACH##_name##HIGHREG, TACH##_name##LOWREG, buf);       \
-}                                                                             \
-DEVICE_ATTR(fan##_name##_input, S_IRUGO, tach_##_name##_show, NULL);          \
-                                                                              \
-GENERIC_FAN_READ(_name, ID, FAN##_name##IDREG);                               \
-DEVICE_ATTR(fan##_name##_ID, S_IRUGO, fan_##_name##_ID_show, NULL);           \
-                                                                              \
-GENERIC_FAN_READ(_name, pwm, FAN##_name##PWMREG);                             \
-GENERIC_FAN_WRITE(_name, pwm, FAN##_name##PWMREG);                            \
-DEVICE_ATTR(pwm##_name, S_IRUGO|S_IWGRP|S_IWUSR,                              \
-      fan_##_name##_pwm_show, fan_##_name##_pwm_store);                       \
-                                                                              \
-static ssize_t fan_##_name##_present_show(struct device *dev,                 \
-      struct device_attribute *attr, char *buf)                               \
-{                                                                             \
-      return read_fan_present(FANPRESENTREG, buf, _name);                     \
-}                                                                             \
-DEVICE_ATTR(fan##_name##_present, S_IRUGO, fan_##_name##_present_show, NULL); \
-                                                                              \
-GENERIC_LED(_name, FANGREENLEDREG, FANREDLEDREG)                              \
+
+#define FAN_DEVICE_ATTR(_name)                                                      \
+static ssize_t tach_##_name##_show(struct device *dev,                              \
+                                   struct device_attribute *attr, char *buf)        \
+{                                                                                   \
+    return read_tach(TACH##_name##HIGHREG, TACH##_name##LOWREG, buf);               \
+}                                                                                   \
+DEVICE_ATTR(fan##_name##_input, S_IRUGO, tach_##_name##_show, NULL);                \
+                                                                                    \
+GENERIC_FAN_READ(_name, ID, FAN##_name##IDREG);                                     \
+DEVICE_ATTR(fan##_name##_ID, S_IRUGO, fan_##_name##_ID_show, NULL);                 \
+                                                                                    \
+GENERIC_FAN_READ(_name, pwm, FAN##_name##PWMREG);                                   \
+GENERIC_FAN_WRITE(_name, pwm, FAN##_name##PWMREG);                                  \
+DEVICE_ATTR(pwm##_name, S_IRUGO|S_IWGRP|S_IWUSR,                                    \
+            fan_##_name##_pwm_show, fan_##_name##_pwm_store);                       \
+                                                                                    \
+static ssize_t fan_##_name##_present_show(struct device *dev,                       \
+                                          struct device_attribute *attr, char *buf) \
+{                                                                                   \
+    return read_fan_present(FANPRESENTREG, buf, _name);                             \
+}                                                                                   \
+DEVICE_ATTR(fan##_name##_present, S_IRUGO, fan_##_name##_present_show, NULL);       \
+                                                                                    \
+GENERIC_LED(_name, FANGREENLEDREG, FANREDLEDREG)                                    \
 
 
 static ssize_t crow_cpld_rev_show(struct device *dev,
-       struct device_attribute *attr, char *buf)
+                                  struct device_attribute *attr, char *buf)
 {
-      return read_cpld_to_buffer(CROWCPLDREVREG, buf);
+    return read_cpld_to_buffer(CROWCPLDREVREG, buf);
 }
+
 DEVICE_ATTR(crow_cpld_rev, S_IRUGO, crow_cpld_rev_show, NULL);
 
 FAN_DEVICE_ATTR(1);
@@ -315,54 +313,53 @@ FAN_DEVICE_ATTR(2);
 FAN_DEVICE_ATTR(3);
 FAN_DEVICE_ATTR(4);
 
-#define FANATTR(_name)                  \
-   &dev_attr_pwm##_name.attr,           \
-   &dev_attr_fan##_name##_ID.attr,      \
-   &dev_attr_fan##_name##_input.attr,   \
-   &dev_attr_fan##_name##_present.attr, \
-   &dev_attr_fan##_name##_led.attr,     \
+#define FANATTR(_name)                   \
+    &dev_attr_pwm##_name.attr,           \
+    &dev_attr_fan##_name##_ID.attr,      \
+    &dev_attr_fan##_name##_input.attr,   \
+    &dev_attr_fan##_name##_present.attr, \
+    &dev_attr_fan##_name##_led.attr,     \
 
 
 static struct attribute *fan_attrs[] = {
-      FANATTR(1)
-      FANATTR(2)
-      FANATTR(3)
-      FANATTR(4)
-      &dev_attr_crow_cpld_rev.attr,
-      NULL,
+    FANATTR(1)
+    FANATTR(2)
+    FANATTR(3)
+    FANATTR(4)
+    &dev_attr_crow_cpld_rev.attr,
+    NULL,
 };
 
 
 static struct attribute_group fan_attr_group = {
-         .attrs = fan_attrs,
+    .attrs = fan_attrs,
 };
 
 static int __init fan_init(void)
 {
-   int error = 0;
-   DPRINT("Module Crow Fan Driver init\n");
+    int error = 0;
+    DPRINT("Module Crow Fan Driver init\n");
 
-   fan_kobject = kobject_create_and_add("fan_driver", kernel_kobj);
+    fan_kobject = kobject_create_and_add("fan_driver", kernel_kobj);
+    if (!fan_kobject) {
+        return -ENOMEM;
 
-   if (!fan_kobject) {
-      return -ENOMEM;
+    }
 
-   }
+    error = sysfs_create_group(fan_kobject, &fan_attr_group);
+    if (error) {
+        DPRINT("Failed to create the fan file in /sys/kernel\n");
+        kobject_put(fan_kobject);
+    }
 
-   error = sysfs_create_group(fan_kobject, &fan_attr_group);
-
-   if (error) {
-      DPRINT("Failed to create the fan file in /sys/kernel\n");
-   }
-
-   return error;
+    return error;
 }
 
 static void __exit fan_exit(void)
 {
-      DPRINT("Module Crow Fan Driver removed");
-      sysfs_remove_group(fan_kobject, &fan_attr_group);
-      kobject_put(fan_kobject);
+    DPRINT("Module Crow Fan Driver removed");
+    sysfs_remove_group(fan_kobject, &fan_attr_group);
+    kobject_put(fan_kobject);
 }
 
 module_init(fan_init);
