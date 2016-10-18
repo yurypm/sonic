@@ -207,10 +207,6 @@ static spinlock_t scd_ptp_lock;
 // nmi_priv points to the scd responsible for the nmi
 static struct scd_dev_priv *nmi_priv = NULL;
 
-/* i2c stuff for the power loss loggging */
-extern struct i2c_client * arista_rtc_i2c_client;
-#define DS1337_POWERLOSS_REG  0x07
-
 #define timestamped_watchdog_panic(msg) do {                            \
       struct timeval tv;                                                \
       struct tm t;                                                      \
@@ -471,32 +467,6 @@ static irqreturn_t scd_interrupt(int irq, void *dev_id)
        real power loss */
       if(priv->irq_info[irq_reg].interrupt_mask_powerloss &
          unmasked_interrupt_status) {
-         int count;
-         // Gross HACK - done for speed, ideally we would schedule a tasklet
-         // but the power is about to go so we don't have the time to do that
-
-         // this structure is copied from /drivers/i2c/bussus/i3c_nforce2.c
-         struct nforce2_smbus {
-            struct i2c_adapter adapter;
-            int base;
-            int size;
-            int blockops;
-            int can_abort;
-         };
-
-         struct nforce2_smbus * smbus = (struct nforce2_smbus * )
-                                                      arista_rtc_i2c_client->adapter;
-         // write the smbus registers in the mpc55 directly
-         outb_p(DS1337_POWERLOSS_REG, smbus->base + 0x03); // command
-         outb_p(1, smbus->base + 0x04); // data
-         outb_p((arista_rtc_i2c_client->addr & 0x7f) << 1, smbus->base + 0x02); //adr
-         outb_p(0x06, smbus->base + 0x00); // go, sets the type of transaction
-
-         // wait for the smbus transaction to complete
-         count = 4000000;
-         while( !inb_p((smbus->base + 0x01)) && count ) {
-            count--;
-         }
          // it is the end of the line for this run, if this really is a power loss
          // we will never complete the printk before the power dies
          printk( KERN_INFO "Power Loss detected\n");
@@ -918,39 +888,6 @@ static ssize_t store_init_trigger(struct device *dev, struct device_attribute *a
    return error ? error : count;
 }
 
-static ssize_t set_power_loss(struct device *dev, struct device_attribute *attr,
-                          const char *buf, size_t count)
-{
-   unsigned long new_value = simple_strtoul(buf, NULL, 10);
-   if(arista_rtc_i2c_client) {
-      if( new_value ) {
-         dev_info(dev, "setting power loss\n" );
-         i2c_smbus_write_byte_data(arista_rtc_i2c_client, DS1337_POWERLOSS_REG, 1);
-      } else {
-         dev_info(dev, "clearing power loss\n" );
-         i2c_smbus_write_byte_data(arista_rtc_i2c_client, DS1337_POWERLOSS_REG, 0);
-      }
-   }
-   return count;
-}
-
-static ssize_t get_power_loss(struct device *dev, struct device_attribute *attr,
-                           char *buf)
-{
-   ssize_t ret;
-   int power_loss = 0;
-
-   if(!arista_rtc_i2c_client) {
-      power_loss = 0;
-   } else {
-      power_loss = i2c_smbus_read_byte_data(arista_rtc_i2c_client,
-                                            DS1337_POWERLOSS_REG);
-   }
-   ret = sprintf(buf, "%d\n", power_loss);
-
-   return ret;
-}
-
 static ssize_t scd_set_debug(struct device *dev, struct device_attribute *attr,
                              const char *buf, size_t count) {
     sscanf( buf, "%d", &debug );
@@ -1003,8 +940,6 @@ static ssize_t scd_set_nmi_control_reg_addr(struct device *dev,
 
 static DEVICE_ATTR(init_trigger, S_IRUGO|S_IWUSR|S_IWGRP,
                    show_init_trigger, store_init_trigger);
-static DEVICE_ATTR(power_loss, S_IRUGO|S_IWUSR|S_IWGRP,
-                   get_power_loss, set_power_loss);
 static DEVICE_ATTR(debug, S_IWUSR|S_IWGRP, NULL, scd_set_debug );
 static DEVICE_ATTR(ptp_offset_valid, S_IWUSR|S_IWGRP,
                    NULL, scd_set_ptp_offset_valid );
@@ -1054,7 +989,6 @@ static struct attribute *scd_attrs[] = {
    &dev_attr_interrupt_irq.attr,
    &dev_attr_ardma_offset.attr,
    &dev_attr_init_trigger.attr,
-   &dev_attr_power_loss.attr,
    &dev_attr_interrupt_poll.attr,
    &dev_attr_debug.attr,
    &dev_attr_nmi_port_io_p.attr,
