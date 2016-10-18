@@ -228,3 +228,8 @@ for i in range(1, 32 + 1):
       f.write("out")
    with open("qsfp%d_modsel/value" % i, "w") as f:
       f.write("1")
+
+# Configure the switch asic pin
+with open("switch_chip_reset/direction", "w") as f:
+   f.write("out")
+
