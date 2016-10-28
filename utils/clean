@@ -1,0 +1,38 @@
+#!/bin/bash
+# This script remove all kernel modules related to arista
+
+set -u
+
+fatal() {
+   echo "$@"
+   exit 1
+}
+
+remove_module_if_exist() {
+   local module="$1"
+
+   if grep -q "$module" /proc/modules; then
+      echo "removing $module"
+      rmmod $module || {
+         echo "WARNING: force removing $module"
+         rmmod -f $module
+      }
+   fi
+}
+
+# guard to avoid running this script on non arista platform
+. /host/machine.conf
+[ "$aboot_vendor" = "arista" ] || fatal "Not an arista platform, skipping"
+
+# list of kernel modules to remove in dependency order, leaf to trunk
+kernel_modules=(
+   raven-fan-driver
+   crow-fan-driver
+   sonic-support-driver
+   scd
+)
+
+for module in ${kernel_modules[@]}; do
+   remove_module_if_exist "${module//-/_}"
+done
+

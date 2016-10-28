@@ -18,6 +18,9 @@ arista_dir="/usr/share/arista"
 prefdl_bin="$arista_dir/prefdl"
 init_script_path="$arista_dir/initscripts"
 
+# reloading kernel module dependency
+depmod -a
+
 # loading eeprom module
 modprobe eeprom
 
@@ -33,6 +36,7 @@ eval $(sed -e 's/:[[:space:]]*/=/' $prefdl_file)
 # execing init script
 init_script_path="$init_script_path/arista-config-${SKU}.py"
 if [ -f "$init_script_path" ]; then
+   echo "Initializing platform $SKU"
    python $init_script_path || fatal "Failed to init platform"
 else
    fatal "Could not find $init_script_path"
