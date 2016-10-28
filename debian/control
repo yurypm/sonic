@@ -1,0 +1,12 @@
+Source: sonic-platform-arista
+Section: main
+Priority: extra
+Maintainer: Samuel Angebault <staphylo@arista.com>
+Build-Depends: debhelper (>= 8.0.0), bzip2
+Standards-Version: 1.0.0
+
+Package: sonic-platform-arista
+Architecture: amd64
+Depends: linux-image-3.16.0-4-amd64
+Description: kernel modules for arista platform devices such as fan, led, sfp
+

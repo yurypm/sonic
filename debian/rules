@@ -1,0 +1,39 @@
+#!/usr/bin/make -f
+
+export INSTALL_MOD_DIR:=extra
+
+PACKAGE_NAME   := sonic-platform-arista
+SCRIPT_FILES   := init clean prefdl
+SERVICE_FILES  := arista-drivers-init.service
+
+KVERSION       ?= $(shell uname -r)
+KERNEL_SRC     ?= /lib/modules/$(KVERSION)/build
+KERNEL_DST     := /lib/modules/$(KVERSION)
+MODULE_SRC     := $(shell pwd)/src
+SCRIPT_SRC     := $(addprefix $(shell pwd)/utils/,$(SCRIPT_FILES))
+INITSCRIPT_SRC := $(shell pwd)/initscripts
+SERVICE_SRC    := $(addprefix $(shell pwd)/confs/,$(SERVICE_FILES))
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	make -C $(KERNEL_SRC) M=$(MODULE_SRC)
+
+override_dh_auto_install:
+	dh_installdirs -p$(PACKAGE_NAME) $(KERNEL_DST)/$(INSTALL_MOD_DIR)
+	cp $(MODULE_SRC)/*.ko debian/$(PACKAGE_NAME)/$(KERNEL_DST)/$(INSTALL_MOD_DIR)
+	dh_installdirs -p$(PACKAGE_NAME) usr/share/arista
+	cp $(SCRIPT_SRC) debian/$(PACKAGE_NAME)/usr/share/arista
+	cp -r $(INITSCRIPT_SRC) debian/$(PACKAGE_NAME)/usr/share/arista
+	dh_installdirs -p$(PACKAGE_NAME) etc/systemd/system
+	cp $(SERVICE_SRC) debian/$(PACKAGE_NAME)/etc/systemd/system
+
+override_dh_pysupport:
+
+override_dh_clean:
+	dh_clean
+	rm -f $(MODULE_SRC)/*.o $(MODULE_SRC)/*.ko $(MODULE_SRC)/*.mod.c $(MODULE_SRC)/.*.cmd
+	rm -f $(MODULE_SRC)/Module.markers $(MODULE_SRC)/Module.symvers $(MODULE_SRC)/modules.order
+	rm -rf $(MODULE_SRC)/.tmp_versions
+
