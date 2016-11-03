@@ -3,7 +3,7 @@
 export INSTALL_MOD_DIR:=extra
 
 PACKAGE_NAME   := sonic-platform-arista
-SCRIPT_FILES   := init clean prefdl
+SCRIPT_FILES   := init clean prefdl reset
 SERVICE_FILES  := arista-drivers-init.service
 
 KVERSION       ?= $(shell uname -r)
