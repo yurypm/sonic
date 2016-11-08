@@ -14,43 +14,17 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/kernel.h>
-#include <linux/printk.h>
-#include <linux/sysfs.h>
-#include <linux/kobject.h>
-#include <linux/init.h>
 #include <linux/module.h>
-#include <linux/fs.h>
-#include <linux/version.h>
-#include <linux/device.h>
 #include <linux/hwmon.h>
-#include "sonic-support-driver.h"
-
-static struct kobject *fan_kobject;
-unsigned long num_sb_fans;
+#include <linux/hwmon-sysfs.h>
+#include <linux/platform_device.h>
 
 #define SB800_BASE 0xfed80000
 #define SB800_PM2_BASE (SB800_BASE + 0x0400)
 #define SB800_PM2_SIZE 0xff
 #define SB800_IOSIZE 4
 #define NUM_FANS 4
-
-static ssize_t show_fan_num(struct device *dev, struct device_attribute *attr,
-                            char *buf)
-{
-    int count = 0;
-    count = sprintf(buf, "%lu\n", num_sb_fans);
-    return count;
-}
-static ssize_t store_fan_num(struct device *dev, struct device_attribute *attr,
-                             const char *buf, size_t count)
-{
-    unsigned long new_value = simple_strtoul(buf, NULL, 10);
-    num_sb_fans = new_value;
-    return count;
-}
-
-static DEVICE_ATTR(sb_fans, S_IRUGO|S_IWUSR|S_IWGRP, show_fan_num, store_fan_num);
+#define DRIVER_NAME "sb800-fans"
 
 #define FAN_DEVICE_ATTR(_name)                                                      \
 static ssize_t show_fan##_name##_input(struct device *dev,                          \
@@ -98,9 +72,10 @@ static ssize_t store_pwm##_name(struct device *dev, struct device_attribute *att
     iowrite8(pwm & 0xff, reg);                                                      \
     return count;                                                                   \
 }                                                                                   \
-static DEVICE_ATTR(fan##_name##_input, S_IRUGO, show_fan##_name##_input, NULL);     \
-static DEVICE_ATTR(pwm##_name, S_IRUGO|S_IWUSR|S_IWGRP, show_pwm##_name,            \
-                   store_pwm##_name);
+static SENSOR_DEVICE_ATTR(fan##_name##_input, S_IRUGO,                              \
+                          show_fan##_name##_input, NULL, 0);                        \
+static SENSOR_DEVICE_ATTR(pwm##_name, S_IRUGO|S_IWUSR|S_IWGRP,                      \
+                          show_pwm##_name, store_pwm##_name, 0);
 
 FAN_DEVICE_ATTR(1);
 FAN_DEVICE_ATTR(2);
@@ -108,37 +83,30 @@ FAN_DEVICE_ATTR(3);
 FAN_DEVICE_ATTR(4);
 
 static struct attribute *fan_attrs[] = {
-    &dev_attr_fan1_input.attr,
-    &dev_attr_pwm1.attr,
-    &dev_attr_fan2_input.attr,
-    &dev_attr_pwm2.attr,
-    &dev_attr_fan3_input.attr,
-    &dev_attr_pwm3.attr,
-    &dev_attr_fan4_input.attr,
-    &dev_attr_pwm4.attr,
-    &dev_attr_sb_fans.attr,
+    &sensor_dev_attr_fan1_input.dev_attr.attr,
+    &sensor_dev_attr_pwm1.dev_attr.attr,
+    &sensor_dev_attr_fan2_input.dev_attr.attr,
+    &sensor_dev_attr_pwm2.dev_attr.attr,
+    &sensor_dev_attr_fan3_input.dev_attr.attr,
+    &sensor_dev_attr_pwm3.dev_attr.attr,
+    &sensor_dev_attr_fan4_input.dev_attr.attr,
+    &sensor_dev_attr_pwm4.dev_attr.attr,
     NULL,
 };
 
-static struct attribute_group fan_attr_group = {
-    .attrs = fan_attrs,
-};
+ATTRIBUTE_GROUPS(fan);
 
-static void sb_fan_remove(void)
-{
-    release_mem_region(SB800_PM2_BASE, SB800_PM2_SIZE);
-}
-
-static s32 __init sb_fan_init(void)
+static s32 sb_fan_probe_init(struct platform_device *pdev)
 {
     int i;
     u32 num_fans = NUM_FANS;
     unsigned int *reg;
+
     if (num_fans == 0) {
         return 0;
     }
     if (!request_mem_region(SB800_PM2_BASE, SB800_PM2_SIZE, "SB800_PM2")) {
-        printk(KERN_ERR "Failed request_mem_region in SB fan initialization");
+        dev_err(&pdev->dev, "failed request_mem_region in SB fan initialization\n");
         return -EBUSY;
     }
     for (i = 0; i < num_fans; i++) {
@@ -153,46 +121,85 @@ static s32 __init sb_fan_init(void)
         reg = ioremap(SB800_PM2_BASE + 0x66 + (0x05 * i), SB800_IOSIZE);
         iowrite8(0x01, reg); /* FanDetectorControl */
     }
-    num_sb_fans = NUM_FANS;
     return 0;
 }
 
-static int __init fan_init(void)
+static int sb_fan_remove(struct platform_device *pdev)
 {
     int err = 0;
-    DPRINT("Module Raven Fan Driver init\n");
+    struct device *hwmon_dev = platform_get_drvdata(pdev);
 
-    fan_kobject = kobject_create_and_add("fan_driver", kernel_kobj);
-    if (!fan_kobject) {
-        return -ENOMEM;
-    }
+    release_mem_region(SB800_PM2_BASE, SB800_PM2_SIZE);
 
-    err = sb_fan_init();
-    if (err) {
-        kobject_put(fan_kobject);
-        return err;
-    }
-
-    err = sysfs_create_group(fan_kobject, &fan_attr_group);
-    if (err) {
-        DPRINT("Failed to create the fan file in /sys/kernel\n");
-        sb_fan_remove();
-        kobject_put(fan_kobject);
-    }
+    hwmon_device_unregister(hwmon_dev);
 
     return err;
 }
 
-static void __exit fan_exit(void)
+static int sb_fan_probe(struct platform_device *pdev)
 {
-    DPRINT("Module Raven Fan Driver removed\n");
-    sysfs_remove_group(fan_kobject, &fan_attr_group);
-    kobject_put(fan_kobject);
-    sb_fan_remove();
+    int err = 0;
+    struct device *dev = &pdev->dev;
+    struct device *hwmon_dev;
+
+    dev_dbg(dev, "initializing raven fan driver\n");
+    err = sb_fan_probe_init(pdev);
+    if (err) {
+        dev_err(dev, "failed to initialize fans\n");
+        return err;
+    }
+
+    hwmon_dev = hwmon_device_register_with_groups(dev, "fans", NULL, fan_groups);
+    if (IS_ERR(hwmon_dev)) {
+       dev_err(dev, "failed to create hwmon sysfs entries\n");
+       sb_fan_remove(pdev);
+       return PTR_ERR(hwmon_dev);
+    }
+
+    platform_set_drvdata(pdev, hwmon_dev);
+
+    return err;
 }
 
-module_init(fan_init);
-module_exit(fan_exit);
+static struct platform_device *sb800_pdev = 0;
+
+static int __init sb_fan_init(void)
+{
+    int err;
+    struct platform_device *pdev;
+
+    pdev = platform_device_register_simple(DRIVER_NAME, -1, NULL, 0);
+    if (IS_ERR(pdev)) {
+        printk(KERN_ERR "failed to register " DRIVER_NAME);
+        return PTR_ERR(pdev);
+    }
+
+    err = sb_fan_probe(pdev);
+    if (err) {
+        dev_err(&pdev->dev, "failed to init device ");
+        platform_device_unregister(pdev);
+        return err;
+    }
+
+    sb800_pdev = pdev;
+
+    return err;
+}
+
+static void __exit sb_fan_exit(void)
+{
+    if (!sb800_pdev) {
+        return;
+    }
+
+    sb_fan_remove(sb800_pdev);
+    platform_device_unregister(sb800_pdev);
+
+    sb800_pdev = 0;
+}
+
+module_init(sb_fan_init);
+module_exit(sb_fan_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Arista Networks");
