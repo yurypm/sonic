@@ -202,6 +202,8 @@ with open(fname, "w") as f:
    f.write(str(eval(fname)))
 
 os.system("modprobe crow-fan-driver")
+with open("/sys/bus/i2c/devices/i2c-3/new_device", "w") as f:
+   f.write("crow_cpld 0x60")
 
 # Temperature sensors
 os.system("modprobe lm90")
