@@ -185,6 +185,8 @@ with open(fname, "w") as f:
    f.write(str(eval(fname)))
 
 os.system("modprobe crow-fan-driver")
+with open("/sys/bus/i2c/devices/i2c-3/new_device", "w") as f:
+   f.write("crow_cpld 0x60")
 
 # Temperature sensors
 os.system("modprobe lm90")
@@ -218,16 +220,12 @@ for i in range(32):
       f.write("sff8436 0x%02x" % addr)
    bus += 1
 
-# Take QSFPs out of reset and assert modsel
+# Configure QSFPs gpio direction
 for i in range(1, 32 + 1):
    with open("qsfp%d_reset/direction" % i, "w") as f:
       f.write("out")
-   with open("qsfp%d_reset/value" % i, "w") as f:
-      f.write("0")
    with open("qsfp%d_modsel/direction" % i, "w") as f:
       f.write("out")
-   with open("qsfp%d_modsel/value" % i, "w") as f:
-      f.write("1")
 
 # Configure the switch asic pin
 with open("switch_chip_reset/direction", "w") as f:

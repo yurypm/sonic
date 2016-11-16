@@ -220,16 +220,12 @@ for i in range(32):
       f.write("sff8436 0x%02x" % addr)
    bus += 1
 
-# Take QSFPs out of reset and assert modsel
+# Configure QSFPs gpio direction
 for i in range(1, 32 + 1):
    with open("qsfp%d_reset/direction" % i, "w") as f:
       f.write("out")
-   with open("qsfp%d_reset/value" % i, "w") as f:
-      f.write("0")
    with open("qsfp%d_modsel/direction" % i, "w") as f:
       f.write("out")
-   with open("qsfp%d_modsel/value" % i, "w") as f:
-      f.write("1")
 
 # Configure the switch asic pin
 with open("switch_chip_reset/direction", "w") as f:
