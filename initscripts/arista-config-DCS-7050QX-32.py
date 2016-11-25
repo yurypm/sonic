@@ -15,6 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import subprocess
 from collections import namedtuple
 
 # Scd PCI address
@@ -171,6 +172,7 @@ sb_led_names = ",".join(sb_led_names)
 init_trigger = 1
 
 # Install and initialize scd driver
+os.system("modprobe i2c-dev")
 os.system("modprobe scd")
 os.system("modprobe sonic-support-driver")
 os.chdir("/sys/bus/pci/drivers/scd/%s/sonic_support_driver/sonic_support_driver"
@@ -206,6 +208,15 @@ for (bus, addr) in [
    (6, 0x58),
    (7, 0x4e),
    ]:
+   if addr == 0x58:
+      # reset fault register for DS460S psu
+      try:
+         val = subprocess.check_output(['i2cget', '-y', str(bus), str(addr), '0x10'])
+         subprocess.call(['i2cset', '-y', str(bus), str(addr), '0x10', '0'])
+         subprocess.call(['i2cset', '-y', str(bus), str(addr), '0x03', '1'])
+         subprocess.call(['i2cset', '-y', str(bus), str(addr), '0x10', val.strip()])
+      except:
+         print("Failed to initialize DS460 psu on bus %d address %d" % (bus, addr))
    with open("/sys/bus/i2c/devices/i2c-%d/new_device" % bus, "w") as f:
       f.write("pmbus 0x%02x" % addr)
 

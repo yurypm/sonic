@@ -7,6 +7,6 @@ Standards-Version: 1.0.0
 
 Package: sonic-platform-arista
 Architecture: amd64
-Depends: linux-image-3.16.0-4-amd64
+Depends: linux-image-3.16.0-4-amd64, i2c-tools
 Description: kernel modules for arista platform devices such as fan, led, sfp
 
