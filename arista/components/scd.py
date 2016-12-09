@@ -21,6 +21,7 @@ class ScdKernelDriver(PciKernelDriver):
       qsfpType = 0
       sfpType = 1
       psuType = 2
+      muxType = 3
 
       resets = {}
       for reset in scd.resets:
@@ -36,9 +37,12 @@ class ScdKernelDriver(PciKernelDriver):
          v = gpios.setdefault(gpio.addr, [])
          v.append(Gpio(gpio.bit, gpio.ro, gpio.activeLow))
 
-      # FIXME: works since only psus are gpios
+      # FIXME: works since only psus are gpios and the driver behave strangely
       gpio_type.append(psuType)
       gpio_names.append("psu")
+      if len(gpios) > 2:
+         gpio_type.append(muxType)
+         gpio_names.append("mux")
 
       for addr, data in scd.qsfps.items():
          gpio_names.append("qsfp%d" % data['id'])
