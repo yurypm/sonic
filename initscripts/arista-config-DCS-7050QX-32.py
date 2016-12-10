@@ -235,10 +235,18 @@ for i in range(32):
 for i in range(1, 32 + 1):
    with open("qsfp%d_reset/direction" % i, "w") as f:
       f.write("out")
+   with open("qsfp%d_reset/value" % i, "w") as f:
+      f.write("0")
    with open("qsfp%d_modsel/direction" % i, "w") as f:
       f.write("out")
+   with open("qsfp%d_modsel/value" % i, "w") as f:
+      f.write("1")
 
-# Configure the switch asic pin
-with open("switch_chip_reset/direction", "w") as f:
-   f.write("out")
+# Take devices out of reset
+for reset_gpios in resets.values():
+   for _, name in reset_gpios:
+      with open(os.path.join(name, "direction"), "w") as f:
+         f.write("out")
+      with open(os.path.join(name, "value"), "w") as f:
+         f.write("0")
 
