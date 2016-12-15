@@ -1,39 +1,53 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/pkg-info.mk
+
+#export DH_VERBOSE = 1
+
 export INSTALL_MOD_DIR:=extra
+
+PYTHON         ?= python2
 
 PACKAGE_NAME   := sonic-platform-arista
 SCRIPT_FILES   := init clean prefdl reset
+BIN_FILES      := arista
 SERVICE_FILES  := arista-drivers-init.service
 
 KVERSION       ?= $(shell uname -r)
 KERNEL_SRC     ?= /lib/modules/$(KVERSION)/build
 KERNEL_DST     := /lib/modules/$(KVERSION)
-MODULE_SRC     := $(shell pwd)/src
-SCRIPT_SRC     := $(addprefix $(shell pwd)/utils/,$(SCRIPT_FILES))
-INITSCRIPT_SRC := $(shell pwd)/initscripts
-SERVICE_SRC    := $(addprefix $(shell pwd)/confs/,$(SERVICE_FILES))
+BASE_DIR       := $(shell pwd)
+MODULE_SRC     := $(BASE_DIR)/src
+SCRIPT_SRC     := $(addprefix $(BASE_DIR)/utils/,$(SCRIPT_FILES))
+BIN_SRC        := $(addprefix $(BASE_DIR)/utils/,$(BIN_FILES))
+INITSCRIPT_SRC := $(BASE_DIR)/initscripts
+SERVICE_SRC    := $(addprefix $(BASE_DIR)/confs/,$(SERVICE_FILES))
 
 %:
-	dh $@
+	dh $@ --with python2,python3 --buildsystem=pybuild
 
 override_dh_auto_build:
-	make -C $(KERNEL_SRC) M=$(MODULE_SRC)
+	$(MAKE) -C $(KERNEL_SRC) M=$(MODULE_SRC)
+	$(PYTHON) setup.py build
 
 override_dh_auto_install:
 	dh_installdirs -p$(PACKAGE_NAME) $(KERNEL_DST)/$(INSTALL_MOD_DIR)
 	cp $(MODULE_SRC)/*.ko debian/$(PACKAGE_NAME)/$(KERNEL_DST)/$(INSTALL_MOD_DIR)
+	dh_installdirs -p$(PACKAGE_NAME) usr/bin
+	cp $(BIN_SRC) debian/$(PACKAGE_NAME)/usr/bin
 	dh_installdirs -p$(PACKAGE_NAME) usr/share/arista
 	cp $(SCRIPT_SRC) debian/$(PACKAGE_NAME)/usr/share/arista
 	cp -r $(INITSCRIPT_SRC) debian/$(PACKAGE_NAME)/usr/share/arista
 	dh_installdirs -p$(PACKAGE_NAME) etc/systemd/system
 	cp $(SERVICE_SRC) debian/$(PACKAGE_NAME)/etc/systemd/system
-
-override_dh_pysupport:
+	$(PYTHON) setup.py install --root=$(BASE_DIR)/debian/$(DEB_SOURCE) --install-layout=deb
 
 override_dh_clean:
 	dh_clean
-	rm -f $(MODULE_SRC)/*.o $(MODULE_SRC)/*.ko $(MODULE_SRC)/*.mod.c $(MODULE_SRC)/.*.cmd
-	rm -f $(MODULE_SRC)/Module.markers $(MODULE_SRC)/Module.symvers $(MODULE_SRC)/modules.order
-	rm -rf $(MODULE_SRC)/.tmp_versions
+	$(RM) $(MODULE_SRC)/*.o $(MODULE_SRC)/*.ko $(MODULE_SRC)/*.mod.c $(MODULE_SRC)/.*.cmd
+	$(RM) $(MODULE_SRC)/Module.markers $(MODULE_SRC)/Module.symvers $(MODULE_SRC)/modules.order
+	$(RM) -r $(MODULE_SRC)/.tmp_versions
+	$(RM) -r $(BASE_DIR)/*.egg-info $(BASE_DIR)/build
 
+print-%:
+	@echo $($*)

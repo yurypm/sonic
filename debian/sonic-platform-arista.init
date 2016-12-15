@@ -13,12 +13,13 @@
 
 drivers_start() {
     echo "Loading arista drivers..."
-    /usr/share/arista/init
+    depmod -a
+    /usr/bin/arista setup --reset
     echo "done."
 }
 drivers_stop() {
     echo "Unloading arista drivers..."
-    /usr/share/arista/clean
+    /usr/bin/arista clean
     echo "done."
 }
 

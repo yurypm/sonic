@@ -20,8 +20,6 @@ import struct
 import sys
 import zlib
 
-output = sys.argv[ 1 ]
-
 typeMap = {
    "END" : ( "00", None, None, None, False ),
    "SKU" : ( "03", None, None, None, False ),
@@ -157,26 +155,37 @@ class PreFdl():
             fatal( "prefdl is too short exiting" )
       return preFdlStr, 4
 
+   def data( self ):
+      res = {}
+      for f in self.requiredFields + self.tlvFields.values():
+         for d in f.data:
+            dStr = d if f.show is None else f.show( d )
+            res[f.name] = dStr
+      return res
+
    def show( self ):
       for f in self.requiredFields + self.tlvFields.values():
          for d in f.data:
             dStr = d if f.show is None else f.show( d )
-            print "%s: %s" % ( f.name, dStr )
+            print("%s: %s" % ( f.name, dStr ))
 
 def decode( fp ):
    data = fp.read( 4 )
    data = data.strip()
    # For format 0002 and more recent fdls use the new Prefdl class
-   if data in ( "0002", "0003" ):
-      pFdl = PreFdl( fp, data, data )
-      return pFdl.show()
+   if data not in ( "0002", "0003" ):
+      raise ValueError
+   return PreFdl( fp, data, data )
 
 def main():
+   output = sys.argv[1]
+
    if output == "-":
       fp = sys.stdin
    else:
       fp = file( output, "r" )
-   decode( fp )
+
+   decode( fp ).show()
 
 if __name__ == "__main__":
    main()
