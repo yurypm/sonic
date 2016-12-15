@@ -9,7 +9,7 @@ export INSTALL_MOD_DIR:=extra
 PYTHON         ?= python2
 
 PACKAGE_NAME   := sonic-platform-arista
-SCRIPT_FILES   := init clean prefdl reset
+SCRIPT_FILES   := prefdl reset
 BIN_FILES      := arista
 SERVICE_FILES  := arista-drivers-init.service
 
@@ -20,7 +20,6 @@ BASE_DIR       := $(shell pwd)
 MODULE_SRC     := $(BASE_DIR)/src
 SCRIPT_SRC     := $(addprefix $(BASE_DIR)/utils/,$(SCRIPT_FILES))
 BIN_SRC        := $(addprefix $(BASE_DIR)/utils/,$(BIN_FILES))
-INITSCRIPT_SRC := $(BASE_DIR)/initscripts
 SERVICE_SRC    := $(addprefix $(BASE_DIR)/confs/,$(SERVICE_FILES))
 
 %:
@@ -37,7 +36,6 @@ override_dh_auto_install:
 	cp $(BIN_SRC) debian/$(PACKAGE_NAME)/usr/bin
 	dh_installdirs -p$(PACKAGE_NAME) usr/share/arista
 	cp $(SCRIPT_SRC) debian/$(PACKAGE_NAME)/usr/share/arista
-	cp -r $(INITSCRIPT_SRC) debian/$(PACKAGE_NAME)/usr/share/arista
 	dh_installdirs -p$(PACKAGE_NAME) etc/systemd/system
 	cp $(SERVICE_SRC) debian/$(PACKAGE_NAME)/etc/systemd/system
 	$(PYTHON) setup.py install --root=$(BASE_DIR)/debian/$(DEB_SOURCE) --install-layout=deb
