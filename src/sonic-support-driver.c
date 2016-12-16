@@ -357,6 +357,8 @@ static s32 check_resp(struct sonic_master *pmaster,
 {
    s32 ret = 0;
    if (resp.ack_error || resp.timeout_error || resp.bus_conflict_error) {
+      sonic_dbg("Smbus response FIFO encountered an error. Response reg = %u",
+                resp.reg );
       ret = -EIO;
    }
    return ret;
@@ -512,7 +514,10 @@ static s32 sonic_smbus_access(struct i2c_adapter *adap, u16 addr,
    return 0;
 
   fail:
-   sonic_dbg("smbus access failed\n");
+   sonic_dbg("smbus access failed accessing address = %u on adapter = %s\n",
+              addr, adap->name);
+   sonic_dbg("smbus read_write = %u, command = %u, size = %d\n", read_write,
+             command, size );
    smbus_reset(pmaster);
    master_unlock(pmaster);
    return ret;
@@ -578,7 +583,7 @@ static s32 __init smbus_init(void)
          bus->master = pmaster;
          bus->id = bus_id;
          bus->adap.owner = THIS_MODULE;
-         bus->adap.class = I2C_CLASS_HWMON;
+         bus->adap.class = 0;
          bus->adap.algo = &sonic_smbus_algorithm;
          bus->adap.dev.parent = &(pdev_ref->dev);
          scnprintf(bus->adap.name,
@@ -617,6 +622,7 @@ static void brightness_set(struct led_classdev *led_cdev, enum led_brightness va
       break;
    case 3:
       reg = 0x1806ff00;
+      break;
    case 4:
       reg = 0x1406ff00;
       break;
@@ -625,8 +631,10 @@ static void brightness_set(struct led_classdev *led_cdev, enum led_brightness va
       break;
    case 6:
       reg = 0x1C06ff00;
+      break;
    default:
       reg = 0x1806ff00;
+      break;
    }
    scd_write_register(pdev_ref, pled->addr, reg);
 }
@@ -684,12 +692,14 @@ static void sb_brightness_set(struct led_classdev *led_cdev,
    case 0: /* Off */
       val_g |= (1 << 6);
       val_r |= (1 << 6);
+      break;
    case 1: /* Red */
       val_r &= ~(1 << 6);
       break;
    case 2: /* Yellow */
       val_g &= ~(1 << 6);
       val_r &= ~(1 << 6);
+      break;
    default: /* Green */
       val_g &= ~(1 << 6);
       break;
