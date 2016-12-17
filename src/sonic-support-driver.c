@@ -13,8 +13,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * The AMD SB800 Register Reference Guide details the behavior of the
- * SB800 accesses: http://support.amd.com/TechDocs/45482.pdf
  */
 
 #include <linux/module.h>
@@ -30,24 +28,9 @@
 
 #include "scd.h"
 #include "sonic-support-driver.h"
+#include "gpio-kversfix.h"
 
 #define SCD_MODULE_NAME "scd"
-
-#define SB800_PCI_INTR_INDEX 0xc00
-#define SB800_PCI_INTR_DATA 0xc01
-#define SB800_PIO_SIZE 2
-#define SB800_BASE 0xfed80000
-#define SB800_GPIO_BASE (SB800_BASE + 0x0100)
-#define SB800_GPIO_SIZE 0xff
-#define SB800_SMI_BASE (SB800_BASE + 0x0200)
-#define SB800_SMI_SIZE 0xff
-#define SB800_PM2_BASE (SB800_BASE + 0x0400)
-#define SB800_PM2_SIZE 0xff
-#define SB800_SMI_STATUS_3 (SB800_SMI_BASE + 0x8c)
-#define SB800_SMI_CONTROL_7 (SB800_SMI_BASE + 0xbc)
-#define SB800_NMI_IRQ 18 /* Must be 16-23 */
-#define SB800_IOSIZE 4
-#define IOSIZE 4
 
 #define NUM_SMBUS_MASTERS 8
 #define NUM_SMBUS_BUSES 8
@@ -63,55 +46,6 @@
 #define RESET_SET_OFFSET 0x00
 #define RESET_CLEAR_OFFSET 0x10
 #define NAME_LENGTH 50
-#define NUM_SB_GPIOS 100
-#define NUM_SB_LEDS 10
-
-/*
- * The following snippet of code is a workaround to support kernel prior to 3.18
- * These previous kernel doesn't benefit of the gpio subsystem refactor that exports
- * more functions.
- */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0)
-#include <linux/gpio/driver.h>
-#include <linux/gpio/consumer.h>
-
-#define gpiochip_free_own_desc gpiochip_free_desc_hack
-void gpiochip_free_desc_hack(struct gpio_desc *desc)
-{
-   // this call decrease the refcount of the module which means that it is an issue
-   // if called outside of the module_exit
-   gpio_free(desc_to_gpio(desc));
-   try_module_get(THIS_MODULE);
-}
-
-#define gpiochip_request_own_desc gpiochip_request_desc_hack
-struct gpio_desc *gpiochip_request_desc_hack(struct gpio_chip *chip,
-                                                    u16 hwnum, const char *label)
-{
-    struct gpio_desc *desc = gpiochip_get_desc(chip, hwnum);
-    int err;
-
-    if (IS_ERR(desc)) {
-        sonic_err("failed to get GPIO descriptor\n");
-        return desc;
-    }
-
-    err = gpio_request(desc_to_gpio(desc), label);
-    if (err < 0) {
-        sonic_err("failed to request GPIO");
-        return ERR_PTR(err);
-    }
-
-    // gpio_request increase the refcount on the module
-    // Since the module asking for its own gpio, the refcount shouldn't be
-    // increased. Given that this is the only exported symbol available this is the
-    // is the easiest way to handle this without adding a kernel patch
-    module_put(chip->owner);
-
-    return desc;
-}
-#endif
-
 
 /* String constants for SFP/QSFP gpio names */
 static const char *qsfpGpioSuffixes[] = {
@@ -177,10 +111,6 @@ struct sonic_led {
    struct led_classdev cdev;
 };
 
-struct sonic_sb_led {
-   u32 addr;
-   struct led_classdev cdev;
-};
 
 struct sonic_gpio {
    char name[40];
@@ -199,10 +129,6 @@ struct sonic_reset {
    struct gpio_chip chip;
 };
 
-struct sonic_sb_gpio {
-   u32 *gpios;
-   struct gpio_chip chip;
-};
 
 struct sonic_master master[NUM_SMBUS_MASTERS];
 u32 master_addrs[NUM_SMBUS_MASTERS + 1];
@@ -226,18 +152,6 @@ u32 reset_addrs[NUM_RESET_ADDRS + 1];
 u32 reset_masks[NUM_RESET_ADDRS + 1];
 char reset_names[NUM_RESETS + 1][NAME_LENGTH];
 u32 num_reset_names;
-
-struct sonic_sb_gpio sb_gpio;
-u32 sb_gpios[NUM_SB_GPIOS + 1];
-u32 sb_gpios_ro[NUM_SB_GPIOS + 1];
-u32 sb_gpios_active_low[NUM_SB_GPIOS + 1];
-char sb_gpio_names[NUM_SB_GPIOS + 1][NAME_LENGTH];
-u32 num_sb_gpio_names;
-
-struct sonic_sb_led sb_led[NUM_SB_LEDS];
-u32 sb_leds[NUM_SB_LEDS + 1];
-char sb_led_names[NUM_SB_LEDS + 1][NAME_LENGTH];
-u32 num_sb_led_names;
 
 union Request {
    u32 reg;
@@ -675,71 +589,6 @@ static s32 __init led_init(void)
    return ret;
 }
 
-static void sb_brightness_set(struct led_classdev *led_cdev,
-                              enum led_brightness value)
-{
-   struct sonic_sb_led *led = container_of(led_cdev, struct sonic_sb_led, cdev);
-   u32 *reg_g = ioremap(SB800_GPIO_BASE + led->addr, SB800_IOSIZE);
-   u32 *reg_r = ioremap(SB800_GPIO_BASE + led->addr + 1, SB800_IOSIZE);
-   u32 val_g = ioread8(reg_g);
-   u32 val_r = ioread8(reg_r);
-
-   /* Enable output */
-   val_g &= ~(1 << 5);
-   val_r &= ~(1 << 5);
-
-   switch ((int)value) {
-   case 0: /* Off */
-      val_g |= (1 << 6);
-      val_r |= (1 << 6);
-      break;
-   case 1: /* Red */
-      val_r &= ~(1 << 6);
-      break;
-   case 2: /* Yellow */
-      val_g &= ~(1 << 6);
-      val_r &= ~(1 << 6);
-      break;
-   default: /* Green */
-      val_g &= ~(1 << 6);
-      break;
-   }
-   iowrite8(val_g, reg_g);
-   iowrite8(val_r, reg_r);
-}
-
-static s32 __init sb_led_init(void)
-{
-   int i;
-   struct sonic_sb_led *pled;
-   int ret = 0;
-   for (i = 0; i < sb_leds[0]; i++) {
-      pled = &sb_led[i];
-      pled->addr = sb_leds[i + 1];
-      pled->cdev.name = sb_led_names[i];
-      pled->cdev.brightness_set = sb_brightness_set;
-      ret = led_classdev_register(&(pdev_ref->dev), &pled->cdev);
-      if (ret) {
-         goto fail;
-      }
-   }
-
-   return 0;
-
-  fail:
-   return ret;
-}
-
-static void sb_led_remove(void)
-{
-   int i;
-   struct sonic_sb_led *pled;
-   for (i = 0; i < sb_leds[0]; i++) {
-      pled = &sb_led[i];
-      led_classdev_unregister(&pled->cdev);
-   }
-}
-
 static u32 bit_mask(u32 mask, unsigned num)
 {
    /* Returns the numth set bit in mask */
@@ -1067,103 +916,6 @@ static s32 __init reset_init(void)
    return ret;
 }
 
-static int sb_gpio_get(struct gpio_chip *gc, unsigned gpio_num)
-{
-   struct sonic_sb_gpio *sb_gpio = container_of(gc, struct sonic_sb_gpio, chip);
-   u32 *reg = ioremap(SB800_GPIO_BASE + sb_gpio->gpios[gpio_num], SB800_IOSIZE);
-   return (ioread8(reg) >> 7) & 0x1;
-}
-
-static void sb_gpio_set(struct gpio_chip *gc, unsigned gpio_num, int val)
-{
-   struct sonic_sb_gpio *sb_gpio = container_of(gc, struct sonic_sb_gpio, chip);
-   u32 *reg = ioremap(SB800_GPIO_BASE + sb_gpio->gpios[gpio_num], SB800_IOSIZE);
-   u32 value = ioread8(reg);
-   value ^= (-val ^ value) & (1 << 6);
-   iowrite8(value, reg);
-}
-
-static int sb_gpio_direction_input(struct gpio_chip *gc, unsigned gpio_num)
-{
-   struct sonic_sb_gpio *sb_gpio = container_of(gc, struct sonic_sb_gpio, chip);
-   u32 *reg = ioremap(SB800_GPIO_BASE + sb_gpio->gpios[gpio_num], SB800_IOSIZE);
-   u32 value = ioread8(reg);
-   value |= (1 << 5);
-   iowrite8(value, reg);
-   return 0;
-}
-
-static int sb_gpio_direction_output(struct gpio_chip *gc, unsigned gpio_num, int val)
-{
-   struct sonic_sb_gpio *sb_gpio = container_of(gc, struct sonic_sb_gpio, chip);
-   u32 *reg = ioremap(SB800_GPIO_BASE + sb_gpio->gpios[gpio_num], SB800_IOSIZE);
-   u32 value = ioread8(reg);
-   value ^= (-val ^ value) & (1 << 6);
-   value &= ~(1 << 5);
-   iowrite8(value, reg);
-   return 0;
-}
-
-static void sb_gpio_remove(void)
-{
-   int i;
-   // FIXME may remove uninitialized gpios
-   if (!sb_gpios[0]) {
-      return;
-   }
-   for (i = 0; i < sb_gpio.chip.ngpio; i++) {
-      if (!sb_gpios[i]) {
-         continue;
-      }
-      sonic_gpio_remove(&sb_gpio.chip, i, sb_gpio_names[i]);
-   }
-   if (gpiochip_remove(&(sb_gpio.chip)) < 0) {
-      sonic_err("Failed to remove GPIO chip for sb gpios\n");
-   }
-   release_mem_region(SB800_GPIO_BASE, SB800_GPIO_SIZE);
-}
-
-
-static s32 __init sb_gpio_init(void)
-{
-   int i;
-   int ret = 0;
-   if (!sb_gpios[0]) {
-      return 0;
-   }
-   if (!request_mem_region(SB800_GPIO_BASE, SB800_GPIO_SIZE, "SB800_GPIO")) {
-      sonic_err("Failed request_mem_region in SB GPIO initialization");
-      return -EBUSY;
-   }
-   sb_gpio.gpios = &(sb_gpios[1]);
-   sb_gpio.chip.label = "sbgpio";
-   sb_gpio.chip.owner = THIS_MODULE;
-   sb_gpio.chip.base = -1;
-   sb_gpio.chip.ngpio = sb_gpios[0];
-   sb_gpio.chip.dev = &pdev_ref->dev;
-   sb_gpio.chip.get = sb_gpio_get;
-   sb_gpio.chip.set = sb_gpio_set;
-   sb_gpio.chip.direction_input = sb_gpio_direction_input;
-   sb_gpio.chip.direction_output = sb_gpio_direction_output;
-   ret = gpiochip_add(&sb_gpio.chip);
-   if (ret) {
-      goto fail;
-   }
-   for (i = 0; i < sb_gpio.chip.ngpio; i++) {
-      ret = sonic_gpio_add(&sb_gpio.chip, i, sb_gpio_names[i], !sb_gpios_ro[i + 1],
-                           (sb_gpios_active_low[0] && sb_gpios_active_low[i + 1]));
-      if (ret) {
-         goto fail;
-      }
-   }
-
-   return 0;
-
-  fail:
-   sb_gpio_remove();
-   return ret;
-}
-
 static int sonic_finish_init(void)
 {
    int err = 0;
@@ -1182,13 +934,6 @@ static int sonic_finish_init(void)
       goto fail_led;
    }
 
-   sonic_dbg("Initialize SB LEDs\n");
-   err = sb_led_init();
-   if (err) {
-      sonic_err("Error initializing SB LEDs\n");
-      goto fail_sb_led;
-   }
-
    sonic_dbg("Initialize SCD GPIOs\n");
    err = gpio_init();
    if (err) {
@@ -1203,24 +948,13 @@ static int sonic_finish_init(void)
       goto fail_reset;
    }
 
-   sonic_dbg("Initialize SB GPIOs\n");
-   err = sb_gpio_init();
-   if (err) {
-      sonic_err("Error initializing SB GPIOs\n");
-      goto fail_sb_gpio;
-   }
-
    initialized = 1;
    sonic_info("sonic support initialization complete\n");
    return 0;
 
-fail_sb_gpio:
-   reset_remove();
 fail_reset:
    gpio_remove();
 fail_gpio:
-   sb_led_remove();
-fail_sb_led:
    led_remove();
 fail_led:
    smbus_remove();
@@ -1354,20 +1088,10 @@ SCD_U32_ARRAY_ATTR(reset_addrs);
 SCD_U32_ARRAY_ATTR(reset_masks);
 SCD_STR_ARRAY_ATTR(reset_names);
 
-SCD_U32_ARRAY_ATTR(sb_gpios);
-SCD_U32_ARRAY_ATTR(sb_gpios_ro);
-SCD_U32_ARRAY_ATTR(sb_gpios_active_low);
-SCD_STR_ARRAY_ATTR(sb_gpio_names);
-
-SCD_U32_ARRAY_ATTR(sb_leds);
-SCD_STR_ARRAY_ATTR(sb_led_names);
-
 static struct attribute *sonic_attrs[] = {
    &dev_attr_master_addrs.attr,
    &dev_attr_led_addrs.attr,
    &dev_attr_led_names.attr,
-   &dev_attr_sb_leds.attr,
-   &dev_attr_sb_led_names.attr,
    &dev_attr_reset_addrs.attr,
    &dev_attr_reset_masks.attr,
    &dev_attr_gpio_addrs.attr,
@@ -1377,10 +1101,6 @@ static struct attribute *sonic_attrs[] = {
    &dev_attr_gpio_active_low.attr,
    &dev_attr_gpio_names.attr,
    &dev_attr_reset_names.attr,
-   &dev_attr_sb_gpios.attr,
-   &dev_attr_sb_gpios_ro.attr,
-   &dev_attr_sb_gpios_active_low.attr,
-   &dev_attr_sb_gpio_names.attr,
    NULL,
 };
 
@@ -1397,8 +1117,6 @@ sonic_probe(struct pci_dev *pdev)
    master_addrs[0] = 0;
    led_addrs[0] = 0;
    num_led_names = 0;
-   sb_leds[0] = 0;
-   num_sb_led_names = 0;
    gpio_addrs[0] = 0;
    gpio_masks[0] = 0;
    gpio_ro[0] = 0;
@@ -1408,10 +1126,6 @@ sonic_probe(struct pci_dev *pdev)
    reset_addrs[0] = 0;
    reset_masks[0] = 0;
    num_reset_names = 0;
-   sb_gpios[0] = 0;
-   sb_gpios_ro[0] = 0;
-   sb_gpios_active_low[0] = 0;
-   num_sb_gpio_names = 0;
 
    pdev_ref = pdev;
 
@@ -1430,10 +1144,8 @@ sonic_remove(struct pci_dev *pdev)
 {
    smbus_remove();
    led_remove();
-   sb_led_remove();
    gpio_remove();
    reset_remove();
-   sb_gpio_remove();
 
    sysfs_remove_link(&pdev->dev.kobj, sonic_attr_group.name);
 

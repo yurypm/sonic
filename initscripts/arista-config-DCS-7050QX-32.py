@@ -64,16 +64,6 @@ for i in range(25, 32 + 1):
 
 Gpio = namedtuple("Gpio", ["addr", "ro", "activeLow"])
 NamedGpio = namedtuple("Gpio", Gpio._fields + ("name",) )
-sb_gpios = []
-sb_leds = []
-num_sb_fans = 4
-for i in range(num_sb_fans):
-   fan_id = i + 1
-   sb_gpios.append(NamedGpio(203 + (6 * i), True, False, "fan%d_id0" % fan_id, ))
-   sb_gpios.append(NamedGpio(204 + (6 * i), True, False, "fan%d_id1" % fan_id, ))
-   sb_gpios.append(NamedGpio(205 + (6 * i), True, False, "fan%d_id2" % fan_id, ))
-   sb_gpios.append(NamedGpio(206 + (6 * i), True, True,  "fan%d_present" % fan_id))
-   sb_leds.append((207 + (6 * i), "fan%d_led" % fan_id))
 
 gpio_names = []
 gpio_type = []
@@ -116,8 +106,6 @@ for addr in reset_addrs:
    reset_masks.append(mask)
 
 (led_addrs, led_names) = zip(*leds)
-(sb_gpios, sb_gpios_ro, sb_gpios_active_low, sb_gpio_names) = zip(*sb_gpios)
-(sb_leds, sb_led_names) = zip(*sb_leds)
 
 gpio_addrs = sorted(scd_gpios)
 gpio_masks = []
@@ -154,20 +142,12 @@ master_addrs = ",".join(map(formatHex, smbus_masters))
 led_addrs = ",".join(map(formatHex, led_addrs))
 led_names = ",".join(led_names)
 
-sb_gpios = ",".join(map(str, sb_gpios))
-sb_gpio_names = ",".join(sb_gpio_names)
-sb_gpios_ro = ",".join(map(formatDec, sb_gpios_ro))
-sb_gpios_active_low = ",".join(map(formatDec, sb_gpios_active_low))
-
 gpio_addrs = ",".join(map(formatHex, gpio_addrs))
 gpio_masks = ",".join(map(formatHex, gpio_masks))
 gpio_names = ",".join(gpio_names)
 gpio_ro = ",".join(map(formatHex, gpio_ro))
 gpio_type = ",".join(map(formatHex, gpio_type))
 gpio_active_low = ",".join(map(formatHex, gpio_active_low))
-
-sb_leds = ",".join(map(str, sb_leds))
-sb_led_names = ",".join(sb_led_names)
 
 init_trigger = 1
 
@@ -182,10 +162,8 @@ for fname in [
    "reset_addrs", "reset_names", "reset_masks",
    "master_addrs",
    "led_addrs", "led_names",
-   "sb_gpios", "sb_gpio_names", "sb_gpios_ro", "sb_gpios_active_low",
    "gpio_addrs", "gpio_masks", "gpio_names", "gpio_ro", "gpio_type",
    "gpio_active_low",
-   "sb_leds", "sb_led_names",
    ]:
    with open(fname, "w") as f:
       f.write(str(eval(fname)))
