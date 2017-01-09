@@ -94,7 +94,7 @@ static ssize_t show_fan_present(struct device *dev, struct device_attribute *att
                                               FAN3_PRESENT_ADDR, FAN4_PRESENT_ADDR};
    u32 num_fan = sensor_attr->index - 1;
    u8 *fan_present_reg = pdata->gpio_base + fan_present_addrs[num_fan];
-   u32 fan_present_val = (ioread8(fan_present_reg) >> 7) & 0x1;
+   u32 fan_present_val = ((~ioread8(fan_present_reg)) >> 7) & 0x1;
    return scnprintf(buf, 5, "%u\n", fan_present_val);
 }
 
@@ -137,7 +137,7 @@ static ssize_t show_led_color(struct device *dev, struct device_attribute *attr,
    else if (!(val_g & LED_ON_OFF_REG_OFFSET) && !(val_r & LED_ON_OFF_REG_OFFSET)) {
       color_index = YELLOW;
    }
-   return scnprintf(buf, 2, "%u\n", color_index);
+   return scnprintf(buf, 3, "%u\n", color_index);
 }
 
 static ssize_t store_led_color(struct device * dev, struct device_attribute * attr,
