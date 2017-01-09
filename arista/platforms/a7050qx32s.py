@@ -83,3 +83,7 @@ class Clearlake(Platform):
          addr += 0x10
          bus += 1
 
+@registerPlatform('DCS-7050QX2-32S')
+class ClearlakePlus(Clearlake):
+   pass
+
