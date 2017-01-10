@@ -46,6 +46,11 @@
 #define CROWCPLDREVREG 0x40
 #define SCRATCHREG 0x41
 
+#define OFF 0
+#define GREEN 1
+#define RED 2
+#define YELLOW 3
+
 struct crow_cpld_data {
     struct i2c_client *client;
 };
@@ -107,37 +112,30 @@ static s32 read_led_color(struct device *dev, u8 reg_green, u8 reg_red, char *bu
     s32 status;
     u8 data;
     int fanIndex = index - 1;
-    char read_value= 0;
+    unsigned char read_value_g = 0;
+    unsigned char read_value_r = 0;
+    int color = OFF;
 
     status = read_cpld(dev, reg_green, &data);
     if (status) {
         return status;
     }
-    read_value = (data >> fanIndex) & 0x01;
+    read_value_g = (data >> fanIndex) & 0x01;
 
     status = read_cpld(dev, reg_red, &data);
     if (status) {
         return status;
     }
-    read_value = ((data >> fanIndex) & 0x01) << 1;
-
-    switch (read_value) {
-    case 0:
-        status = sprintf(buf, "0\n");
-        break;
-    case 1:
-        status = sprintf(buf, "1\n");
-        break;
-    case 2:
-        status = sprintf(buf, "2\n");
-        break;
-    case 3:
-    default:
-        status = sprintf(buf, "3\n");
-        break;
+    read_value_r = (data >> fanIndex) & 0x01;
+    if((!read_value_g) && read_value_r) {
+       color = GREEN;
+    } else if (read_value_g && (!read_value_r)) {
+       color = RED;
+    } else if((!read_value_g) && (!read_value_r)) {
+       color = YELLOW;
     }
 
-    return status;
+    return sprintf(buf, "%d\n", color);
 }
 
 static s32 write_led_color(struct device *dev, u8 reg_green, u8 reg_red,
@@ -154,19 +152,19 @@ static s32 write_led_color(struct device *dev, u8 reg_green, u8 reg_red,
     sscanf(buf, "%hhu", &data);
 
     switch (data) {
-    case 1:
+    case GREEN:
         green_led = 1;
         red_led = 0;
         break;
-    case 2:
+    case RED:
         green_led = 0;
         red_led = 1;
         break;
-    case 3:
+    case YELLOW:
         green_led = 1;
         red_led = 1;
         break;
-    case 0:
+    case OFF:
     default:
         green_led = 0;
         red_led = 0;
@@ -183,15 +181,15 @@ static s32 write_led_color(struct device *dev, u8 reg_green, u8 reg_red,
     }
 
     if (green_led) {
-        green_value |= (1u << fanIndex);
-    } else {
         green_value &= ~(1u << fanIndex);
+    } else {
+        green_value |= (1u << fanIndex);
     }
 
     if (red_led) {
-        red_value |= (1u << fanIndex);
-    } else {
         red_value &= ~(1u << fanIndex);
+    } else {
+        red_value |= (1u << fanIndex);
     }
 
     status = write_cpld(dev, reg_green, green_value);
@@ -335,7 +333,6 @@ static int crow_cpld_probe(struct i2c_client *client,
     struct device *dev = &client->dev;
     struct device *hwmon_dev;
     struct crow_cpld_data *data;
-
     data = devm_kzalloc(dev, sizeof(struct crow_cpld_data), GFP_KERNEL);
     if (!data) {
         return -ENOMEM;

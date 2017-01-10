@@ -114,8 +114,8 @@ static ssize_t show_fan_id(struct device *dev, struct device_attribute *attr,
   return scnprintf(buf, 12, "%u %u %u\n", id_vals[2], id_vals[1], id_vals[0]);
 }
 
-static ssize_t show_led_color(struct device *dev, struct device_attribute *attr,
-                              char *buf)
+static ssize_t show_led(struct device *dev, struct device_attribute *attr,
+                        char *buf)
 {
    struct raven_pdata *pdata = dev_get_drvdata(dev->parent);
    struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
@@ -140,8 +140,8 @@ static ssize_t show_led_color(struct device *dev, struct device_attribute *attr,
    return scnprintf(buf, 3, "%u\n", color_index);
 }
 
-static ssize_t store_led_color(struct device * dev, struct device_attribute * attr,
-                               const char * buf, size_t count)
+static ssize_t store_led(struct device * dev, struct device_attribute * attr,
+                         const char * buf, size_t count)
 {
    struct raven_pdata *pdata = dev_get_drvdata(dev->parent);
    struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
@@ -249,8 +249,8 @@ static SENSOR_DEVICE_ATTR(fan##_numfan##_present, S_IRUGO,                      
                           show_fan_present, NULL, _numfan);                         \
 static SENSOR_DEVICE_ATTR(fan##_numfan##_id, S_IRUGO,                               \
                           show_fan_id, NULL, _numfan);                              \
-static SENSOR_DEVICE_ATTR(fan##_numfan##_led_color, S_IRUGO|S_IWUSR|S_IWGRP,        \
-                          show_led_color, store_led_color, _numfan);
+static SENSOR_DEVICE_ATTR(fan##_numfan##_led, S_IRUGO|S_IWUSR|S_IWGRP,              \
+                          show_led, store_led, _numfan);
 
 FAN_DEVICE_ATTR(1);
 FAN_DEVICE_ATTR(2);
@@ -260,22 +260,22 @@ FAN_DEVICE_ATTR(4);
 static struct attribute *fan_attrs[] = {
     &sensor_dev_attr_fan1_input.dev_attr.attr,
     &sensor_dev_attr_pwm1.dev_attr.attr,
-    &sensor_dev_attr_fan1_led_color.dev_attr.attr,
+    &sensor_dev_attr_fan1_led.dev_attr.attr,
     &sensor_dev_attr_fan1_present.dev_attr.attr,
     &sensor_dev_attr_fan1_id.dev_attr.attr,
     &sensor_dev_attr_fan2_input.dev_attr.attr,
     &sensor_dev_attr_pwm2.dev_attr.attr,
-    &sensor_dev_attr_fan2_led_color.dev_attr.attr,
+    &sensor_dev_attr_fan2_led.dev_attr.attr,
     &sensor_dev_attr_fan2_present.dev_attr.attr,
     &sensor_dev_attr_fan2_id.dev_attr.attr,
     &sensor_dev_attr_fan3_input.dev_attr.attr,
     &sensor_dev_attr_pwm3.dev_attr.attr,
-    &sensor_dev_attr_fan3_led_color.dev_attr.attr,
+    &sensor_dev_attr_fan3_led.dev_attr.attr,
     &sensor_dev_attr_fan3_present.dev_attr.attr,
     &sensor_dev_attr_fan3_id.dev_attr.attr,
     &sensor_dev_attr_fan4_input.dev_attr.attr,
     &sensor_dev_attr_pwm4.dev_attr.attr,
-    &sensor_dev_attr_fan4_led_color.dev_attr.attr,
+    &sensor_dev_attr_fan4_led.dev_attr.attr,
     &sensor_dev_attr_fan4_present.dev_attr.attr,
     &sensor_dev_attr_fan4_id.dev_attr.attr,
     NULL,
