@@ -1,4 +1,5 @@
 from ..core.platform import registerPlatform, Platform
+from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
 
@@ -16,6 +17,8 @@ class Clearlake(Platform):
       self.sfpRange = []
       self.qsfp40gAutoRange = incrange(5, 28)
       self.qsfp40gOnlyRange = incrange(29, 36)
+
+      self.addDriver(KernelDriver, 'crow-fan-driver')
 
       scd = Scd(PciAddr(bus=0x02))
       self.addComponent(scd)
