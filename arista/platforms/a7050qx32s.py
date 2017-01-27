@@ -25,6 +25,7 @@ class Clearlake(Platform):
 
       scd.addComponents([
          I2cKernelComponent(I2cAddr(2, 0x4c), 'max6658'),
+         I2cKernelComponent(I2cAddr(3, 0x4c), 'max6658'),
          I2cKernelComponent(I2cAddr(3, 0x60), 'crow_cpld'),
          I2cKernelComponent(I2cAddr(3, 0x4e), 'pmbus'), # ucd90120A
          I2cKernelComponent(I2cAddr(5, 0x58), 'pmbus'),
