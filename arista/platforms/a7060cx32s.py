@@ -1,4 +1,5 @@
 from ..core.platform import registerPlatform, Platform
+from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
 
@@ -13,19 +14,21 @@ class Upperlake(Platform):
       self.sfpRange = incrange(33, 34)
       self.qsfp100gRange = incrange(1, 32)
 
+      self.addDriver(KernelDriver, 'crow-fan-driver')
+
       scd = Scd(PciAddr(bus=0x02))
       self.addComponent(scd)
 
       scd.addComponents([
          I2cKernelComponent(I2cAddr(2, 0x1a), 'max6697'),
-         I2cKernelComponent(I2cAddr(2, 0x4c), 'max6658'),
+         I2cKernelComponent(I2cAddr(3, 0x4c), 'max6658'),
          I2cKernelComponent(I2cAddr(3, 0x60), 'crow_cpld'),
-         I2cKernelComponent(I2cAddr(3, 0x4e), 'ucd90120'), # ucd90120A
+         I2cKernelComponent(I2cAddr(3, 0x4e), 'pmbus'), # ucd90120A
          I2cKernelComponent(I2cAddr(5, 0x50), 'eeprom'),
          I2cKernelComponent(I2cAddr(5, 0x58), 'pmbus'),
          I2cKernelComponent(I2cAddr(6, 0x50), 'eeprom'),
          I2cKernelComponent(I2cAddr(6, 0x58), 'pmbus'),
-         I2cKernelComponent(I2cAddr(7, 0x4e), 'ucd90120'),
+         I2cKernelComponent(I2cAddr(7, 0x4e), 'pmbus'), # ucd90120A
       ])
 
       scd.addSmbusMasterRange(0x8000, 5, 0x80)
@@ -56,13 +59,15 @@ class Upperlake(Platform):
             scd.addLed(addr, "qsfp%d_%d" % (xcvrId, laneId))
             addr += 0x10
 
-      addr = 0x5010
-      bus = 10
-      for xcvrId in self.sfpRange:
-         scd.addSfp(addr, xcvrId)
-         scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
-         addr += 0x10
-         bus += 1
+      # Disable SFP+ port temporarily due to the limited number of gpios allowed by
+      # the kernel ARCH_NR_GPIOS (gpiolib)
+      #addr = 0x5010
+      #bus = 10
+      #for xcvrId in self.sfpRange:
+      #   scd.addSfp(addr, xcvrId)
+      #   scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+      #   addr += 0x10
+      #   bus += 1
 
       addr = 0x5050
       bus = 18
