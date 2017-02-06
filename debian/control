@@ -3,8 +3,6 @@ Section: main
 Priority: extra
 Maintainer: Samuel Angebault <staphylo@arista.com>
 Build-Depends:
-   ${python:Depends},
-   ${misc:Depends},
    dh-python,
    debhelper (>= 8.0.0),
    bzip2
