@@ -14,6 +14,13 @@ class Ds460(I2cKernelComponent):
 
       logging.debug('initializing ds460 registers')
       bus = SMBus(self.addr.bus)
+
+      try:
+         bus.read_byte_data(addr, 0x00)
+      except IOError:
+         logging.debug('device ds460 not found')
+         return
+
       byte = bus.read_byte_data(addr, 0x10)
       bus.write_byte_data(addr, 0x10, 0)
       bus.write_byte_data(addr, 0x03, 1)
