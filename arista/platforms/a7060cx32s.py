@@ -41,7 +41,10 @@ class Upperlake(Platform):
          (0x6090, 'beacon'),
       ])
 
-      scd.addReset(ResetGpio(0x4000, 0, False, 'switch_chip_reset'))
+      scd.addResets([
+         ResetGpio(0x4000, 1, False, 'switch_chip_reset'),
+         ResetGpio(0x4000, 2, False, 'switch_chip_pcie_reset'),
+      ])
 
       scd.addGpios([
          NamedGpio(0x5000, 0, True, False, "psu1"),
