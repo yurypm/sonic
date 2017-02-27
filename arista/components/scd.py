@@ -10,6 +10,87 @@ from ..core.utils import sysfsFmtHex, sysfsFmtDec, sysfsFmtStr, simulation
 
 from common import PciComponent, KernelDriver, PciKernelDriver
 
+class ScdHwmonKernelDriver(PciKernelDriver):
+   def __init__(self, scd):
+      super(ScdHwmonKernelDriver, self).__init__(scd, 'scd-hwmon')
+
+   def writeConfig(self, path, data):
+      if simulation:
+         print(data)
+      else:
+         for filename, value in data.items():
+            try:
+               with open(os.path.join(path, filename), 'w') as f:
+                  f.write(value)
+            except IOError as e:
+               logging.error('%s %s' % (e.filename, e.strerror))
+
+   def writeObjects(self, components):
+      PAGE_SIZE = 4096
+      data = []
+      data_size = 0
+
+      for entry in components:
+         entry_size = len(entry) + 1
+         if entry_size + data_size > PAGE_SIZE:
+            self.writeConfig(self.getSysfsPath(), {'new_object': '\n'.join(data)})
+            data_size = 0
+            data = []
+         data.append(entry)
+         data_size += entry_size
+
+      if data:
+         self.writeConfig(self.getSysfsPath(), {'new_object': '\n'.join(data)})
+
+   def setup(self):
+      super(ScdHwmonKernelDriver, self).setup()
+
+      scd = self.component
+      data = []
+
+      for i, addr in enumerate(scd.masters, 0):
+         data += ["master %#x %d" % (addr, i)]
+
+      for addr, name in scd.leds:
+         data += ["led %#x %s" % (addr, name)]
+
+      for addr, info in scd.qsfps.items():
+         data += ["qsfp %#x %u" % (addr, info['id'])]
+
+      for addr, info in scd.sfps.items():
+         data += ["sfp %#x %u" % (addr, info['id'])]
+
+      for reset in scd.resets:
+         data += ["reset %#x %s %u" % (reset.addr, reset.name, reset.bit)]
+
+      for gpio in scd.gpios:
+         data += ["gpio %#x %s %u %d %d" % (gpio.addr, gpio.name, gpio.bit,
+                                            int(gpio.ro), int(gpio.activeLow))]
+
+      self.writeObjects(data)
+
+   def finish(self):
+      logging.debug('applying scd configuration')
+      path = self.getSysfsPath()
+      self.writeConfig(path, {'init_trigger': '1'})
+      super(ScdHwmonKernelDriver, self).finish()
+
+   def reset(self, value):
+      path = self.getSysfsPath()
+      if simulation:
+         resets = self.component.getSysfsResetNameList()
+         logging.debug('reseting devices %s' % resets)
+         return
+      for reset in self.component.getSysfsResetNameList():
+         with open(os.path.join(path, reset), 'w') as f:
+            f.write('1' if value else '0')
+
+   def resetIn(self):
+      self.reset(True)
+
+   def resetOut(self):
+      self.reset(False)
+
 class ScdKernelDriver(PciKernelDriver):
    def __init__(self, scd):
       super(ScdKernelDriver, self).__init__(scd, 'sonic-support-driver')
@@ -160,10 +241,13 @@ class ScdKernelDriver(PciKernelDriver):
       self.reset(False)
 
 class Scd(PciComponent):
-   def __init__(self, addr):
+   def __init__(self, addr, newDriver=False):
       super(Scd, self).__init__(addr)
       self.addDriver(KernelDriver, 'scd')
-      self.addDriver(ScdKernelDriver)
+      if newDriver:
+         self.addDriver(ScdHwmonKernelDriver)
+      else:
+         self.addDriver(ScdKernelDriver)
       self.masters = []
       self.resets = []
       self.gpios = []
@@ -254,6 +338,5 @@ class Scd(PciComponent):
       entries = [reset.name for reset in self.resets]
       if xcvrs:
          entries += ['qsfp%d_reset' % data['id'] for data in self.qsfps.values()]
-         entries += ['sfp%d_reset' % data['id'] for data in self.sfps.values()]
       return entries
 

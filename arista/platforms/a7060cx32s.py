@@ -66,11 +66,9 @@ class Upperlake(Platform):
             scd.addLed(addr, "qsfp%d_%d" % (xcvrId, laneId))
             addr += 0x10
 
-      # Disable SFP+ port temporarily due to the limited number of gpios allowed by
-      # the kernel ARCH_NR_GPIOS (gpiolib)
-      #addr = 0x5010
-      #bus = 10
-      #for xcvrId in self.sfpRange:
+      # addr = 0x5010
+      # bus = 10
+      # for xcvrId in self.sfpRange:
       #   scd.addSfp(addr, xcvrId)
       #   scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
       #   addr += 0x10

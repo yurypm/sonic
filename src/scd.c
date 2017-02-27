@@ -99,6 +99,7 @@
 #include <linux/kdebug.h>
 #include <asm/nmi.h>
 #include <linux/sched.h>
+#include <linux/device.h>
 
 #define SCD_MODULE_NAME "scd"
 
@@ -129,6 +130,9 @@
 
 #define IOSIZE 4
 
+#ifndef _PAGE_CACHE_UC
+# define _PAGE_CACHE_UC _PAGE_CACHE_MODE_UC
+#endif
 
 typedef struct scd_irq_info_s {
    unsigned long interrupt_status_offset;
@@ -147,6 +151,7 @@ struct scd_dev_priv {
    struct list_head list;
    struct pci_dev *pdev;
    void __iomem *mem;
+   size_t mem_len;
    spinlock_t ptp_time_spinlock;
    scd_irq_info_t irq_info[SCD_NUM_IRQ_REGISTERS];
    unsigned long crc_error_irq;
@@ -243,8 +248,8 @@ static struct scd_ardma_ops *scd_ardma_ops = NULL;
 // registered scd-em callbacks
 static struct scd_em_ops *scd_em_ops = NULL;
 
-// registered sonic callbacks
-static struct scd_sonic_ops *scd_sonic_ops = NULL;
+// registered extention callbacks
+static struct scd_ext_ops *scd_ext_ops = NULL;
 
 int scd_register_ardma_ops(struct scd_ardma_ops *ops) {
    struct scd_dev_priv *priv;
@@ -328,62 +333,62 @@ void scd_unregister_em_ops() {
 EXPORT_SYMBOL(scd_register_em_ops);
 EXPORT_SYMBOL(scd_unregister_em_ops);
 
-int scd_register_sonic_ops(struct scd_sonic_ops *ops) {
+int scd_register_ext_ops(struct scd_ext_ops *ops) {
    struct scd_dev_priv *priv;
 
-   ASSERT(scd_sonic_ops == NULL);
-   scd_sonic_ops = ops;
+   ASSERT(scd_ext_ops == NULL);
+   scd_ext_ops = ops;
 
    // call probe() for any existing scd
    scd_lock();
    list_for_each_entry(priv, &scd_list, list) {
-      if (scd_sonic_ops->probe) {
-         scd_sonic_ops->probe(priv->pdev);
+      if (scd_ext_ops->probe) {
+         scd_ext_ops->probe(priv->pdev);
       }
    }
    scd_unlock();
    return (0);
 }
 
-void scd_unregister_sonic_ops() {
+void scd_unregister_ext_ops() {
    struct scd_dev_priv *priv;
 
-   if (!scd_sonic_ops) {
+   if (!scd_ext_ops) {
       return;
    }
 
    // call remove() for any existing scd
    scd_lock();
    list_for_each_entry(priv, &scd_list, list) {
-      if (scd_sonic_ops->remove) {
-         scd_sonic_ops->remove(priv->pdev);
+      if (scd_ext_ops->remove) {
+         scd_ext_ops->remove(priv->pdev);
       }
    }
    scd_unlock();
-   scd_sonic_ops = NULL;
+   scd_ext_ops = NULL;
 }
 
-void scd_sonic_init_trigger(void){
+void scd_ext_init_trigger(void){
    struct scd_dev_priv *priv;
 
-   if (!scd_sonic_ops) {
+   if (!scd_ext_ops) {
       return;
    }
 
-   // call probe() for any existing scd
+   // call init_trigger() for any existing scd
    scd_lock();
    list_for_each_entry(priv, &scd_list, list) {
-      if (scd_sonic_ops->init_trigger) {
-         scd_sonic_ops->init_trigger(priv->pdev);
+      if (scd_ext_ops->init_trigger) {
+         scd_ext_ops->init_trigger(priv->pdev);
       }
    }
    scd_unlock();
    return;
 }
 
-EXPORT_SYMBOL(scd_register_sonic_ops);
-EXPORT_SYMBOL(scd_unregister_sonic_ops);
-EXPORT_SYMBOL(scd_sonic_init_trigger);
+EXPORT_SYMBOL(scd_register_ext_ops);
+EXPORT_SYMBOL(scd_unregister_ext_ops);
+EXPORT_SYMBOL(scd_ext_init_trigger);
 
 static irqreturn_t scd_interrupt(int irq, void *dev_id)
 {
@@ -641,9 +646,9 @@ static int scd_finish_init(struct device *dev)
       scd_em_ops->probe(priv->pdev);
    }
 
-   // scd_sonic probe
-   if (scd_sonic_ops && scd_sonic_ops->init_trigger) {
-      scd_sonic_ops->init_trigger(priv->pdev);
+   // scd_ext init_trigger
+   if (scd_ext_ops && scd_ext_ops->init_trigger) {
+      scd_ext_ops->init_trigger(priv->pdev);
    }
 
    // interrupt polling
@@ -788,16 +793,18 @@ u32
 scd_read_register(struct pci_dev *pdev, u32 offset)
 {
    void __iomem *reg;
+   u32 res = 0;
    struct scd_dev_priv *priv;
 
    priv = pci_get_drvdata(pdev);
    ASSERT( priv );
-   ASSERT( offset < pci_resource_len( pdev, SCD_BAR_REGS ) );
+   ASSERT( offset < priv->mem_len );
    if (priv) {
       reg = priv->mem + offset;
-      return (ioread32(reg));
+      res = ioread32(reg);
    }
-   return (0);
+   dev_dbg(&pdev->dev, "io:read 0x%04x => 0x%08x", offset, res);
+   return res;
 }
 EXPORT_SYMBOL(scd_read_register);
 
@@ -809,13 +816,27 @@ scd_write_register(struct pci_dev *pdev, u32 offset, u32 val)
 
    priv = pci_get_drvdata(pdev);
    ASSERT( priv );
-   ASSERT( offset < pci_resource_len( pdev, SCD_BAR_REGS ) );
+   ASSERT( offset < priv->mem_len );
+   dev_dbg(&pdev->dev, "io:write 0x%04x <= 0x%08x", offset, val);
    if (priv) {
       reg = priv->mem + offset;
       iowrite32(val, reg);
    }
 }
 EXPORT_SYMBOL(scd_write_register);
+
+size_t
+scd_resource_len(struct pci_dev *pdev)
+{
+   struct scd_dev_priv *priv;
+
+   priv = pci_get_drvdata(pdev);
+   ASSERT( priv );
+   if (priv)
+      return priv->mem_len;
+   return 0;
+}
+EXPORT_SYMBOL(scd_resource_len);
 
 // scd_list_lock mutex is not held in this function.
 // scd_lock mutex is not held in this function.
@@ -1052,6 +1073,8 @@ scd_pci_enable(struct pci_dev *pdev)
       goto fail;
    }
 
+   priv->mem_len = pci_resource_len(pdev, SCD_BAR_REGS);
+
    // check if this device uses partial reconfiguration to load the scd image
    pci_read_config_word(pdev, PCI_SUBSYSTEM_ID, &ssid);
    if (ssid == RECONFIG_PCI_SUBSYSTEM_ID) {
@@ -1268,9 +1291,10 @@ static void scd_remove(struct pci_dev *pdev)
    if (scd_em_ops && scd_em_ops->remove) {
       scd_em_ops->remove(pdev);
    }
+
    // call scd_sonic remove callback
-   if (scd_sonic_ops && scd_sonic_ops->remove) {
-      scd_sonic_ops->remove(pdev);
+   if (scd_ext_ops && scd_ext_ops->remove) {
+      scd_ext_ops->remove(pdev);
    }
 
    //stop interrupt polling if we've initialized it
@@ -1559,6 +1583,7 @@ scd_lpc_enable(struct pci_dev *pdev)
    // map address specified into kernel
    priv->mem = (void __iomem*) ioremap_nocache((unsigned int) lpc_res_addr,
                                                lpc_res_size);
+   priv->mem_len = lpc_res_size;
    // save the irq for later use, application can still override later
    // by writing into /sys/devices/.../interrupt_irq
    priv->interrupt_irq = lpc_irq;

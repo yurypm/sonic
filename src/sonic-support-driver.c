@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Arista Networks, Inc.
+/* Copyright (c) 2017 Arista Networks, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -260,11 +260,19 @@ static union ControlStatus read_cs(struct sonic_master *pmaster)
 static union Response read_resp(struct sonic_master *pmaster)
 {
    union Response resp;
+   u32 retry = 10;
+
    resp.reg = scd_read_register(pdev_ref, pmaster->resp);
-   while (resp.fe) {
+   while (resp.fe && --retry) {
       msleep(10);
       resp.reg = scd_read_register(pdev_ref, pmaster->resp);
    }
+
+   if (resp.fe) {
+      sonic_dbg("smbus response: fifo still empty after retries");
+      resp.reg = 0xffffffff;
+   }
+
    return resp;
 }
 
@@ -1155,7 +1163,7 @@ static struct attribute_group sonic_attr_group = {
          .name = "sonic_support_driver",
 };
 
-static void
+static int
 sonic_probe(struct pci_dev *pdev)
 {
    int error = 0;
@@ -1179,10 +1187,11 @@ sonic_probe(struct pci_dev *pdev)
    if (error) {
       sonic_err("Failed to create the sonic sysfs entry link in scd driver\n");
       dev_err(&(pdev->dev), "sysfs_create_link() error %d\n", error);
-      return;
+      return -ENODEV;
    }
    initialized = 0;
 
+   return 0;
 }
 
 static void
@@ -1200,13 +1209,14 @@ sonic_remove(struct pci_dev *pdev)
    sonic_info("Removed sonic Support Driver\n");
 }
 
-static void
+static int
 sonic_init_trigger(struct pci_dev *pdev) {
    sonic_finish_init();
    initialized = 1;
+   return 0;
 }
 
-static struct scd_sonic_ops sonic_ops = {
+static struct scd_ext_ops sonic_ops = {
    .probe  = sonic_probe,
    .remove = sonic_remove,
    .init_trigger = sonic_init_trigger,
@@ -1228,7 +1238,7 @@ static int __init sonic_init(void)
       goto fail_sysfs;
    }
 
-   err = scd_register_sonic_ops(&sonic_ops);
+   err = scd_register_ext_ops(&sonic_ops);
    if (err) {
       sonic_warn("scd-sonic: scd_register_sonic_ops failed\n");
       goto fail_ops;
@@ -1245,7 +1255,7 @@ fail_sysfs:
 
 static void __exit sonic_exit(void)
 {
-   scd_unregister_sonic_ops();
+   scd_unregister_ext_ops();
    sysfs_remove_group(sonic_kobject, &sonic_attr_group);
    kobject_put(sonic_kobject);
    sonic_info("Module sonic support driver removed\n");

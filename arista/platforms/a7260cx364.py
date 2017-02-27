@@ -16,14 +16,13 @@ class Gardena(Platform):
       self._inventory.addXcvrs(Xcvrs(0, 65, 0, 63, 64, 65, 9,
                                      Inventory._portToEeprom(0, 65, 10)))
 
-      # FIXME: need to expand number of gpio pins allowed by kernel before setting true values here
-      self.sfpRange = [] # incrange(0, 0)
-      self.qsfpRange = incrange(0, 64)
+      self.sfpRange = incrange(65, 66)
+      self.qsfpRange = incrange(1, 64)
 
       # FIXME: Need to add 'rook-fan-driver'
       # self.addDriver(KernelDriver, 'crow-fan-driver')
 
-      scd = Scd(PciAddr(bus=0x06))
+      scd = Scd(PciAddr(bus=0x06), newDriver=True)
       self.addComponent(scd)
 
       scd.addComponents([
@@ -32,13 +31,17 @@ class Gardena(Platform):
          I2cKernelComponent(I2cAddr(4, 0x58), 'pmbus'),
          ]) # Incomplete
 
-      scd.addSmbusMasterRange(0x8000, 10, 0x80)
+      scd.addSmbusMasterRange(0x8000, 8, 0x80)
 
-      scd.addReset(ResetGpio(0x4000, 0, False, 'switch_chip_reset'))
+      scd.addResets([
+         ResetGpio(0x4000, 0, False, 'switch_chip_reset'),
+         ResetGpio(0x4000, 1, False, 'switch_chip_pcie_reset'),
+         ResetGpio(0x4000, 2, False, 'security_asic_reset'),
+      ])
 
       scd.addGpios([
-         NamedGpio(0x5000, 0, True, False, "psu1"),
-         NamedGpio(0x5000, 1, True, False, "psu2"),
+         NamedGpio(0x5000, 0, True, False, "psu1_present"),
+         NamedGpio(0x5000, 1, True, False, "psu2_present"),
       ])
 
       addr = 0x6100
@@ -47,7 +50,7 @@ class Gardena(Platform):
             scd.addLed(addr, "qsfp%d_%d" % (xcvrId, laneId))
             addr += 0x10
 
-      addr = 0x7200
+      addr = 0x7100
       for xcvrId in self.sfpRange:
          scd.addLed(addr, "sfp%d" % xcvrId)
          addr += 0x10
@@ -61,7 +64,7 @@ class Gardena(Platform):
          bus += 1
 
       addr = 0xA400
-      bus = 73
+      bus = 7
       for xcvrId in sorted(self.sfpRange):
          scd.addSfp(addr, xcvrId)
          scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))

@@ -38,22 +38,23 @@ struct scd_em_ops {
    void (*remove)(struct pci_dev *pdev);
 };
 
-// Allow scd-sonic callbacks to be registered
-struct scd_sonic_ops {
-   void (*probe)(struct pci_dev *pdev);
+// Allow scd-ext callbacks to be registered
+struct scd_ext_ops {
+   int (*probe)(struct pci_dev *pdev);
    void (*remove)(struct pci_dev *pdev);
-   void (*init_trigger)(struct pci_dev *pdev);
+   int (*init_trigger)(struct pci_dev *pdev);
 };
 
 int scd_register_ardma_ops(struct scd_ardma_ops *ops);
 void scd_unregister_ardma_ops(void);
 int scd_register_em_ops(struct scd_em_ops *ops);
 void scd_unregister_em_ops(void);
-int scd_register_sonic_ops(struct scd_sonic_ops *ops);
-void scd_unregister_sonic_ops(void);
+int scd_register_ext_ops(struct scd_ext_ops *ops);
+void scd_unregister_ext_ops(void);
 struct pci_dev *scd_get_pdev(const char *name);
 u32 scd_read_register(struct pci_dev *pdev, u32 offset);
 void scd_write_register(struct pci_dev *pdev, u32 offset, u32 val);
+size_t scd_resource_len(struct pci_dev *pdev);
 u64 scd_ptp_timestamp(void);
 
 // Copyright (c) 2010-2016 Arista Networks, Inc.  All rights reserved.

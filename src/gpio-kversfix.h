@@ -1,9 +1,25 @@
-// Copyright (c) 2016 Arista Networks, Inc.  All rights reserved.
-// Arista Networks, Inc. Confidential and Proprietary.
+/* Copyright (c) 2017 Arista Networks, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+#ifndef _LINUX_DRIVER_GPIO_FIX_H_
+#define _LINUX_DRIVER_GPIO_FIX_H_
 
 #include <linux/gpio.h>
 #include <linux/version.h>
-#include "sonic-support-driver.h"
 
 /*
  * The following snippet of code is a workaround to support kernel prior to 3.18
@@ -31,13 +47,13 @@ struct gpio_desc *gpiochip_request_desc_hack(struct gpio_chip *chip,
     int err;
 
     if (IS_ERR(desc)) {
-        sonic_err("failed to get GPIO descriptor\n");
+        pr_err("gpio: failed to get GPIO descriptor\n");
         return desc;
     }
 
     err = gpio_request(desc_to_gpio(desc), label);
     if (err < 0) {
-        sonic_err("failed to request GPIO");
+        pr_err("gpio: failed to request GPIO");
         return ERR_PTR(err);
     }
 
@@ -49,4 +65,6 @@ struct gpio_desc *gpiochip_request_desc_hack(struct gpio_chip *chip,
 
     return desc;
 }
-#endif
+#endif /* LINUX_VERSION < 3.18.0 */
+
+#endif /* !_LINUX_DRIVER_GPIO_FIX_H_ */
