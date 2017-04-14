@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import print_function, with_statement
 
 import os
 import logging
@@ -131,8 +131,8 @@ class ScdKernelDriver(PciKernelDriver):
       # FIXME: the direction should be set properly by the driver
       logging.debug('setting gpio directions')
       data = {
-         os.path.join(key, 'direction'): 'out'
-         for key in self.component.getSysfsResetNameList()
+         os.path.join(name, 'direction'): 'out'
+         for name, ro in self.component.allGpios() if not ro
       }
       self.writeConfig(path, data)
       super(ScdKernelDriver, self).finish()
@@ -221,6 +221,31 @@ class Scd(PciComponent):
             Gpio(8, False, False),
          ]
       }
+
+   def allGpios(self):
+      def zipXcvr(xcvrType, gpio_names, entries):
+         res = []
+         for data in entries.values():
+            for name, gpio in zip(gpio_names, data['gpios']):
+               res += [ ("%s%d_%s" % (xcvrType, data['id'], name), gpio.ro) ]
+         return res
+
+      sfp_names = [
+         "rxlos", "txfault", "present", "rxlos_changed", "txfault_changed",
+         "present_changed", "txdisable", "rate_select0", "rate_select1",
+      ]
+
+      qsfp_names = [
+         "interrupt", "present", "interrupt_changed", "present_changed",
+         "lp_mode", "reset", "modsel",
+      ]
+
+      gpios = []
+      gpios += zipXcvr("sfp", sfp_names, self.sfps)
+      gpios += zipXcvr("qsfp", qsfp_names, self.qsfps)
+      gpios += [ (gpio.name, gpio.ro) for gpio in self.gpios ]
+      gpios += [ (reset.name, False) for reset in self.resets ]
+      return gpios
 
    def getSysfsResetNameList(self, xcvrs=True):
       entries = [reset.name for reset in self.resets]
