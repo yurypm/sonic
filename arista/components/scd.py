@@ -112,8 +112,11 @@ class ScdKernelDriver(PciKernelDriver):
          print(data)
       else:
          for filename, value in data.items():
-            with open(os.path.join(path, filename), 'w') as f:
-               f.write(value)
+            try:
+               with open(os.path.join(path, filename), 'w') as f:
+                  f.write(value)
+            except IOError as e:
+               logging.error('%s %s' % (e.filename, e.strerror))
 
    def getConfigSysfsPath(self):
       return os.path.join(self.getSysfsPath(), 'sonic_support_driver',
