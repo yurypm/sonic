@@ -20,11 +20,15 @@ import struct
 import sys
 import zlib
 
+def showMac( m ):
+   return ":".join([m[0:2], m[2:4], m[4:6], m[6:8], m[8:10], m[10:12]])
+
 typeMap = {
    "END" : ( "00", None, None, None, False ),
    "SKU" : ( "03", None, None, None, False ),
+   "MAC" : ( "05", None, showMac, None, False ),
    "SerialNumber" : ( "0E", None, None, None, False ),
-   }
+}
 
 idToNameMap = {}
 for k, v in typeMap.iteritems():
@@ -164,10 +168,14 @@ class PreFdl():
       return res
 
    def show( self ):
-      for f in self.requiredFields + self.tlvFields.values():
-         for d in f.data:
-            dStr = d if f.show is None else f.show( d )
-            print("%s: %s" % ( f.name, dStr ))
+      for k, v in self.data().items():
+         print("%s: %s" % (k, v))
+
+   def getField( self, name ):
+      return self.data().get( name, None )
+
+   def getCrc( self ):
+      return self.crc
 
 def decode( fp ):
    data = fp.read( 4 )

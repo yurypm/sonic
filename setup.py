@@ -11,6 +11,7 @@ setup(
       'arista.core',
       'arista.components',
       'arista.platforms',
+      'arista.utils',
    ],
 )
 

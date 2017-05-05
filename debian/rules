@@ -9,7 +9,7 @@ export INSTALL_MOD_DIR:=extra
 PYTHON         ?= python2
 
 PACKAGE_NAME   := sonic-platform-arista
-SCRIPT_FILES   := prefdl reset
+SCRIPT_FILES   := reset
 BIN_FILES      := arista
 SERVICE_FILES  := arista-drivers-init.service
 
