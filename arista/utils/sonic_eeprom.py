@@ -7,10 +7,12 @@ need this having everything at the same place is easier.
 
 The eeprom plugin end up being just the following
 
-   import arista.utils.sonic
-   board = arista.utils.sonic.getTlvInfoDecoder()
+   import arista.utils.sonic_eeprom
+   board = arista.utils.sonic_eeprom.getTlvInfoDecoder()
 
 """
+
+from __future__ import absolute_import
 
 import StringIO
 
@@ -20,7 +22,7 @@ try:
    from sonic_eeprom import eeprom_base
    from sonic_eeprom import eeprom_tlvinfo
 except ImportError, e:
-   raise ImportError (str(e) + "- required module not found")
+   raise ImportError (str(e) + " - required module not found")
 
 class board(eeprom_tlvinfo.TlvInfoDecoder):
    _TLV_INFO_MAX_LEN = 256
