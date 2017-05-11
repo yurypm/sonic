@@ -1,4 +1,4 @@
-from ..core.platform import registerPlatform, Platform
+from ..core.platform import registerPlatform, Inventory, Platform, Xcvrs
 from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
@@ -7,10 +7,14 @@ from ..components.common import I2cKernelComponent
 from ..components.scd import Scd
 from ..components.ds460 import Ds460
 
+
 @registerPlatform('DCS-7050QX-32')
 class Cloverdale(Platform):
    def __init__(self):
       super(Cloverdale, self).__init__()
+
+      self._inventory.addXcvrs(Xcvrs(0, 31, 0, 32, 0, 0, 10,
+                                     Inventory._portToEeprom(0, 31, 10)))
 
       self.fanCount = 4
       self.qsfp40gAutoRange = incrange(1, 24)
@@ -78,4 +82,3 @@ class Cloverdale(Platform):
          scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
          addr += 0x10
          bus += 1
-

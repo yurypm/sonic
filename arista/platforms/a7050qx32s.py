@@ -1,4 +1,4 @@
-from ..core.platform import registerPlatform, Platform
+from ..core.platform import registerPlatform, Inventory, Platform, Xcvrs
 from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
@@ -7,10 +7,16 @@ from ..components.common import I2cKernelComponent
 from ..components.scd import Scd
 from ..components.ds125br import Ds125Br
 
+
 @registerPlatform('DCS-7050QX-32S')
 class Clearlake(Platform):
    def __init__(self):
       super(Clearlake, self).__init__()
+
+      self._inventory.addXcvrs(Xcvrs(0, 31, 0, 32, 0, 0, 10,
+                                     Inventory._portToEeprom(0, 31, 10)))
+
+      self._inventory = ClearlakeInventory()
 
       # FIXME: due to an issue with the kernel drivers, the sfp ports are disabled
       # self.sfpRange = incrange(1, 4)

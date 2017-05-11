@@ -1,4 +1,4 @@
-from ..core.platform import registerPlatform, Platform
+from ..core.platform import registerPlatform, Inventory, Platform, Xcvrs
 from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
@@ -6,10 +6,14 @@ from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
 from ..components.common import I2cKernelComponent
 from ..components.scd import Scd
 
+
 @registerPlatform('DCS-7060CX-32S')
 class Upperlake(Platform):
    def __init__(self):
       super(Upperlake, self).__init__()
+
+      self._inventory.addXcvrs(Xcvrs(0, 33, 0, 32, 33, 34, 18,
+                                     Inventory._portToEeprom(0, 33, 18)))
 
       self.sfpRange = incrange(33, 34)
       self.qsfp100gRange = incrange(1, 32)
