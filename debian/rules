@@ -10,7 +10,7 @@ PYTHON         ?= python2
 
 PACKAGE_NAME   := sonic-platform-arista
 SCRIPT_FILES   := reset
-BIN_FILES      := arista
+BIN_FILES      := arista boot-eos
 SERVICE_FILES  := arista-drivers-init.service
 
 KVERSION       ?= $(shell uname -r)
