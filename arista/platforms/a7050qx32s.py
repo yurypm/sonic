@@ -16,8 +16,6 @@ class Clearlake(Platform):
       self._inventory.addXcvrs(Xcvrs(0, 31, 0, 32, 0, 0, 10,
                                      Inventory._portToEeprom(0, 31, 10)))
 
-      self._inventory = ClearlakeInventory()
-
       # FIXME: due to an issue with the kernel drivers, the sfp ports are disabled
       # self.sfpRange = incrange(1, 4)
       self.sfpRange = []
