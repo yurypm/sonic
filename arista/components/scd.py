@@ -29,7 +29,7 @@ class ScdKernelDriver(PciKernelDriver):
          v = resets.setdefault(reset.addr, [])
          v.append((reset.bit, reset.name))
 
-      gpios = {}
+      gpios = OrderedDict()
       gpio_names = []
       gpio_type = []
       for gpio in scd.gpios:
@@ -40,7 +40,7 @@ class ScdKernelDriver(PciKernelDriver):
       # FIXME: works since only psus are gpios and the driver behave strangely
       gpio_type.append(psuType)
       gpio_names.append("psu")
-      if len(gpios) > 2:
+      if len(scd.gpios) > 2:
          gpio_type.append(muxType)
          gpio_names.append("mux")
 
@@ -68,7 +68,7 @@ class ScdKernelDriver(PciKernelDriver):
             mask |= (1 << bit)
          reset_masks.append(mask)
 
-      gpio_addrs = sorted(gpios)
+      gpio_addrs = gpios.keys()
       gpio_masks = []
       gpio_ro = []
       gpio_active_low = []

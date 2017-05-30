@@ -35,7 +35,7 @@ class Clearlake(Platform):
          I2cKernelComponent(I2cAddr(5, 0x58), 'pmbus'),
          I2cKernelComponent(I2cAddr(6, 0x58), 'pmbus'),
          I2cKernelComponent(I2cAddr(7, 0x4e), 'pmbus'), # ucd90120A
-         Ds125Br(I2cAddr(8, 0xff)), # XXX only repeater for 35-36, mux needed?
+         Ds125Br(I2cAddr(8, 0xff)),
       ])
 
       scd.addSmbusMasterRange(0x8000, 6)
