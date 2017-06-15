@@ -166,7 +166,7 @@ union Request {
       u32 dod:1;
       u32 st:1;
       u32 bs:4;
-      u32 reserved2:4;
+      u32 ti:4;
    } __packed;
 };
 
@@ -187,7 +187,8 @@ union Response {
       u32 bus_conflict_error:1;
       u32 timeout_error:1;
       u32 ack_error:1;
-      u32 reserved1:5;
+      u32 flushed:1;
+      u32 ti:4;
       u32 ss:6;
       u32 reserved2:9;
       u32 fe:1;
@@ -267,15 +268,35 @@ static union Response read_resp(struct sonic_master *pmaster)
 }
 
 static s32 check_resp(struct sonic_master *pmaster,
-                      union Response resp)
+                      union Response resp, u32 tid)
 {
-   s32 ret = 0;
-   if (resp.ack_error || resp.timeout_error || resp.bus_conflict_error) {
-      sonic_dbg("Smbus response FIFO encountered an error. Response reg = %u",
-                resp.reg );
-      ret = -EIO;
+   const char *error;
+
+   if (resp.ack_error) {
+      error = "ack";
+      goto fail;
    }
-   return ret;
+   if (resp.timeout_error) {
+      error = "timeout";
+      goto fail;
+   }
+   if (resp.bus_conflict_error) {
+      error = "conflict";
+      goto fail;
+   }
+   if (resp.flushed) {
+      error = "flush";
+      goto fail;
+   }
+   if (resp.ti != tid) {
+      error = "tid";
+      goto fail;
+   }
+   return 0;
+
+  fail:
+   sonic_dbg("smbus response: %s error. reg = 0x%08x", error, resp.reg);
+   return -EIO;
 }
 
 static u32 sonic_smbus_func(struct i2c_adapter *adapter)
@@ -321,6 +342,7 @@ static s32 sonic_smbus_access(struct i2c_adapter *adap, u16 addr,
    switch (size) {
    case I2C_SMBUS_QUICK:
       ss = 1;
+      break;
    case I2C_SMBUS_BYTE:
       ss = 2;
       break;
@@ -392,15 +414,18 @@ static s32 sonic_smbus_access(struct i2c_adapter *adap, u16 addr,
       }
       req.da = ((!(req.dod || req.sp)) ? 1 : 0);
       write_req(pmaster, req);
+      req.ti++;
       req.st = 0;
    }
 
+   req.ti = 0;
    for (i = 0; i < ss; i++) {
       resp = read_resp(pmaster);
-      ret = check_resp(pmaster, resp);
+      ret = check_resp(pmaster, resp, req.ti);
       if (ret) {
          goto fail;
       }
+      req.ti++;
       if (read_write == I2C_SMBUS_READ) {
          if (size == I2C_SMBUS_BYTE || size == I2C_SMBUS_BYTE_DATA) {
             if (i == ss - 1) {
@@ -428,10 +453,10 @@ static s32 sonic_smbus_access(struct i2c_adapter *adap, u16 addr,
    return 0;
 
   fail:
-   sonic_dbg("smbus access failed accessing address = %u on adapter = %s\n",
+   sonic_warn("smbus access failed address=0x%02x on adapter=\"%s\"\n",
               addr, adap->name);
    sonic_dbg("smbus read_write = %u, command = %u, size = %d\n", read_write,
-             command, size );
+             command, size);
    smbus_reset(pmaster);
    master_unlock(pmaster);
    return ret;
@@ -473,7 +498,7 @@ static void smbus_remove(void)
    }
 }
 
-static s32 __init smbus_init(void)
+static s32 smbus_init(void)
 {
    int master_id;
    int bus_id;
@@ -566,7 +591,7 @@ static void led_remove(void)
 }
 
 
-static s32 __init led_init(void)
+static s32 led_init(void)
 {
    int i;
    struct sonic_led *pled;
@@ -742,7 +767,7 @@ static void gpio_remove(void)
    }
 }
 
-static s32 __init gpio_init(void)
+static s32 gpio_init(void)
 {
    int i;
    int j;
@@ -874,7 +899,7 @@ static void reset_remove(void)
    }
 }
 
-static s32 __init reset_init(void)
+static s32 reset_init(void)
 {
    int i;
    int j;

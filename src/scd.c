@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2016 Arista Networks, Inc.  All rights reserved.
+ * Copyright (c) 2006-2017 Arista Networks, Inc.  All rights reserved.
  * Arista Networks, Inc. Confidential and Proprietary.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -924,6 +924,7 @@ static ssize_t scd_set_nmi_control_reg_addr(struct device *dev,
    if (!priv->initialized) {
       if (nmi_priv && priv != nmi_priv) {
          dev_err(dev, "Multiple devices attempting to set NMI attributes\n");
+         scd_unlock();
          return count;
       }
       if (value != SCD_UNINITIALIZED && !nmi_priv) {
