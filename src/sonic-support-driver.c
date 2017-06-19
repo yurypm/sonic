@@ -34,6 +34,7 @@
 
 #define NUM_SMBUS_MASTERS 8
 #define NUM_SMBUS_BUSES 8
+#define SMBUS_RETRY_COUNT 3
 #define SMBUS_REQUEST_OFFSET 0x10
 #define SMBUS_CONTROL_STATUS_OFFSET 0x20
 #define SMBUS_RESPONSE_OFFSET 0x30
@@ -271,6 +272,7 @@ static s32 check_resp(struct sonic_master *pmaster,
                       union Response resp, u32 tid)
 {
    const char *error;
+   int error_ret = -EIO;
 
    if (resp.ack_error) {
       error = "ack";
@@ -290,13 +292,14 @@ static s32 check_resp(struct sonic_master *pmaster,
    }
    if (resp.ti != tid) {
       error = "tid";
+      error_ret = -EAGAIN;
       goto fail;
    }
    return 0;
 
   fail:
    sonic_dbg("smbus response: %s error. reg = 0x%08x", error, resp.reg);
-   return -EIO;
+   return error_ret;
 }
 
 static u32 sonic_smbus_func(struct i2c_adapter *adapter)
@@ -462,9 +465,27 @@ static s32 sonic_smbus_access(struct i2c_adapter *adap, u16 addr,
    return ret;
 }
 
+static s32 sonic_smbus_access_retry(struct i2c_adapter *adap, u16 addr,
+                                    unsigned short flags, char read_write,
+                                    u8 command, int size,
+                                    union i2c_smbus_data *data)
+{
+   int retry = 0;
+   int ret;
+
+   do {
+      ret = sonic_smbus_access(adap, addr, flags, read_write, command, size, data);
+      if (ret != -EAGAIN)
+         return ret;
+      retry++;
+      sonic_dbg("smbus retrying... %d/%d", retry, SMBUS_RETRY_COUNT);
+   } while (retry < SMBUS_RETRY_COUNT);
+
+   return -EIO;
+}
 
 static struct i2c_algorithm sonic_smbus_algorithm = {
-   .smbus_xfer    = sonic_smbus_access,
+   .smbus_xfer    = sonic_smbus_access_retry,
    .functionality = sonic_smbus_func,
 };
 
