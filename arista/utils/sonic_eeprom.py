@@ -15,8 +15,10 @@ The eeprom plugin end up being just the following
 from __future__ import absolute_import
 
 import StringIO
+import os
 
 from ..core import prefdl
+from ..core.platform import fmted_prefdl_path
 
 try:
    from sonic_eeprom import eeprom_base
@@ -25,22 +27,24 @@ except ImportError, e:
    raise ImportError (str(e) + " - required module not found")
 
 class board(eeprom_tlvinfo.TlvInfoDecoder):
-   _TLV_INFO_MAX_LEN = 256
-   _TLV_HDR_ENABLED = 0
 
    def __init__(self, name, path, cpld_root, ro):
       self._prefdl_cache = {}
-      self.eeprom_path = "/sys/bus/i2c/drivers/eeprom/1-0052/eeprom"
-      super(board, self).__init__(self.eeprom_path, 0, '', True)
+      self.prefdl_path = fmted_prefdl_path
+      super(board, self).__init__(self.prefdl_path, 0, '', True)
+
+   def read_eeprom(self):
+      with open(self.prefdl_path) as fp:
+         return fp.read()
 
    def _decode_eeprom(self, e):
       pfdl = self._prefdl_cache.get(e, None)
       if pfdl is not None:
          return pfdl
 
-      pfdl = prefdl.decode(StringIO.StringIO(e))
-
+      pfdl = prefdl.PreFdlFromFile(StringIO.StringIO(e))
       self._prefdl_cache[e] = pfdl
+
       return pfdl
 
    def decode_eeprom(self, e):

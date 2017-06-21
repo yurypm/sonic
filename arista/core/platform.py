@@ -16,19 +16,63 @@ import prefdl
 platforms = {}
 syseeprom = None
 
+prefdl_dir = '/host'
+prefdl_path = os.path.join(prefdl_dir, '.system-prefdl')
+fmted_prefdl_path = os.path.join(prefdl_dir, '.syseeprom')
+
+def showMac(m):
+   return ":".join([m[0:2], m[2:4], m[4:6], m[6:8], m[8:10], m[10:12]])
+
+def formatPrefdlData(data):
+   formatDict = {
+      "MAC": ["MAC", "MacAddrBase", "Mac"],
+      "SKU": ["SKU", "Sku"],
+      "SerialNumber": ["SerialNumber"],
+   }
+   fdata = { }
+   for k, v in data.items():
+      for kfmt, vfmt in formatDict.items():
+         if k in vfmt:
+            if kfmt == "MAC":
+               val = showMac(v)
+            else:
+               val = v
+            fdata[kfmt] = val
+   return fdata
+
+def writeFormattedPrefdl(pfdl, f):
+   fdata = formatPrefdlData(pfdl.data())
+   with open(f, 'w+') as fp:
+      for k, v in fdata.items():
+         fp.write("%s: %s\n" % (k, v))
+
 def readPrefdl():
-   modprobe('eeprom')
-   for addr in ['1-0052']:
-      eeprompath = os.path.join('/sys/bus/i2c/drivers/eeprom', addr, 'eeprom')
-      if not os.path.exists(eeprompath):
-         continue
-      try:
-         with open(eeprompath) as f:
-            logging.debug('reading system eeprom from %s' % eeprompath)
-            return prefdl.decode(f)
-      except Exception as e:
-         logging.warn('could not obtain prefdl from %s' % eeprompath)
-         logging.warn('error seen: %s' % e)
+   if os.path.exists(fmted_prefdl_path):
+      with open(fmted_prefdl_path) as fp:
+         return prefdl.PreFdlFromFile(fp)
+
+   if os.path.exists(prefdl_path):
+      with open(prefdl_path) as fp:
+         logging.debug('reading system eeprom from %s' % prefdl_path)
+         pfdl = prefdl.PreFdlFromFile(fp)
+      writeFormattedPrefdl(pfdl, fmted_prefdl_path)
+      with open(fmted_prefdl_path) as fp:
+         return prefdl.PreFdlFromFile(fp)
+   else:
+      modprobe('eeprom')
+      for addr in ['1-0052']:
+         eeprompath = os.path.join('/sys/bus/i2c/drivers/eeprom', addr, 'eeprom')
+         if not os.path.exists(eeprompath):
+            continue
+         try:
+            with open(eeprompath) as fp:
+               logging.debug('reading system eeprom from %s' % eeprompath)
+               pfdl = prefdl.decode(fp)
+               pfdl.writeToFile(fmted_prefdl_path)
+               return pfdl
+         except Exception as e:
+            logging.warn('could not obtain prefdl from %s' % eeprompath)
+            logging.warn('error seen: %s' % e)
    raise RuntimeError("Could not find valid system eeprom")
 
 def getPrefdlData():
@@ -56,10 +100,14 @@ def getPlatform(name=None):
 def getPlatforms():
    return platforms
 
-def registerPlatform(sku):
+def registerPlatform(skus):
    global platforms
    def wrapper(cls):
-      platforms[sku] = cls
+      if isinstance(skus, list):
+         for sku in skus:
+            platforms[sku] = cls
+      else:
+         platforms[skus] = cls
       return cls
    return wrapper
 

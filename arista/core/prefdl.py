@@ -171,10 +171,36 @@ class PreFdl():
       for k, v in self.data().items():
          print("%s: %s" % (k, v))
 
+   def writeToFile(self, f):
+      with open(f, 'w+') as fp:
+         for k, v in self.data().items():
+            fp.write("%s: %s\n" % (k, v))
+
    def getField( self, name ):
       return self.data().get( name, None )
 
    def getCrc( self ):
+      return self.crc
+
+class PreFdlFromFile():
+   def __init__(self, fp):
+      self._data = {}
+      for line in fp:
+         key, val = line.strip().split(': ', 1)
+         self._data[key] = val
+      self.crc = self._data.pop('Crc', -1)
+
+   def data(self):
+      return self._data
+
+   def show(self):
+      for key, val in self._data.items():
+         print("%s: %s" % (key, val))
+
+   def getField(self, name):
+      return self._data[name]
+
+   def getCrc(self):
       return self.crc
 
 def decode( fp ):
