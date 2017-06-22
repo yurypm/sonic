@@ -19,12 +19,17 @@ class Ds460(I2cKernelComponent):
          bus.read_byte_data(addr, 0x00)
       except IOError:
          logging.debug('device ds460 not found')
+         bus.close()
          return
 
-      byte = bus.read_byte_data(addr, 0x10)
-      bus.write_byte_data(addr, 0x10, 0)
-      bus.write_byte_data(addr, 0x03, 1)
-      bus.write_byte_data(addr, 0x10, byte)
+      try:
+         byte = bus.read_byte_data(addr, 0x10)
+         bus.write_byte_data(addr, 0x10, 0)
+         bus.write_byte_data(addr, 0x03, 1)
+         bus.write_byte_data(addr, 0x10, byte)
+      except IOError:
+         logging.debug('failed to initialize ds460')
+
       bus.close()
 
       super(Ds460, self).setup()
