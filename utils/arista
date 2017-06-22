@@ -130,7 +130,7 @@ def main():
    elif args.action in platform_commands:
       platform_commands[args.action](args, getPlatform(args.platform))
    else:
-      logging.error("Command %s doesn't exists" % args.command)
+      logging.error("Command %s doesn't exists", args.command)
 
 if __name__ == '__main__':
    main()

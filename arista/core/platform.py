@@ -53,7 +53,7 @@ def readPrefdl():
 
    if os.path.exists(prefdl_path):
       with open(prefdl_path) as fp:
-         logging.debug('reading system eeprom from %s' % prefdl_path)
+         logging.debug('reading system eeprom from %s', prefdl_path)
          pfdl = prefdl.PreFdlFromFile(fp)
       writeFormattedPrefdl(pfdl, fmted_prefdl_path)
       with open(fmted_prefdl_path) as fp:
@@ -66,13 +66,13 @@ def readPrefdl():
             continue
          try:
             with open(eeprompath) as fp:
-               logging.debug('reading system eeprom from %s' % eeprompath)
+               logging.debug('reading system eeprom from %s', eeprompath)
                pfdl = prefdl.decode(fp)
                pfdl.writeToFile(fmted_prefdl_path)
                return pfdl
          except Exception as e:
-            logging.warn('could not obtain prefdl from %s' % eeprompath)
-            logging.warn('error seen: %s' % e)
+            logging.warn('could not obtain prefdl from %s', eeprompath)
+            logging.warn('error seen: %s', e)
    raise RuntimeError("Could not find valid system eeprom")
 
 def getPrefdlDataSim():

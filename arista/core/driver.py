@@ -72,9 +72,9 @@ class KernelDriver(Driver):
          try:
             rmmod(self.module)
          except Exception as e:
-            logging.error('Failed to unload %s: %s' % (self.module, e))
+            logging.error('Failed to unload %s: %s', self.module, e)
       else:
-         logging.debug('Module %s is not loaded' % self.module)
+         logging.debug('Module %s is not loaded', self.module)
 
    def loaded(self):
       return isModuleLoaded(self.module)

@@ -230,7 +230,7 @@ class ScdKernelDriver(PciKernelDriver):
       path = self.getSysfsPath()
       if inSimulation():
          resets = self.component.getSysfsResetNameList()
-         logging.debug('reseting devices %s' % resets)
+         logging.debug('reseting devices %s', resets)
          return
       for reset in self.component.getSysfsResetNameList():
          activeLow = False

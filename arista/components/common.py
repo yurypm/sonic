@@ -46,12 +46,12 @@ class I2cKernelDriver(KernelDriver):
       addr = self.component.addr
       devicePath = self.getSysfsPath()
       path = os.path.join(self.getSysfsBusPath(), 'new_device')
-      logging.debug('creating i2c device %s on bus %d at 0x%02x' %
-                                               (self.name, addr.bus, addr.address))
+      logging.debug('creating i2c device %s on bus %d at 0x%02x',
+                    self.name, addr.bus, addr.address)
       if inSimulation():
          return
       if os.path.exists(devicePath):
-         logging.debug('i2c device %s already exists' % devicePath)
+         logging.debug('i2c device %s already exists', devicePath)
       else:
          with open(path, 'w') as f:
             f.write('%s 0x%02x' % (self.name, self.component.addr.address))

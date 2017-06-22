@@ -28,7 +28,7 @@ class NoopObj(object):
    def noop(self, attr):
       def wrapped(*args, **kwargs):
          funcStr = '%s(%s)' % (attr, self._fmtArgs(*args, **kwargs))
-         logging.debug('%s.%s' % (self.classStr, funcStr))
+         logging.debug('%s.%s', self.classStr, funcStr)
       return wrapped
 
    def __getattr__(self, attr):
