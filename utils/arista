@@ -9,7 +9,7 @@ import sys
 
 import arista.platforms
 from arista.core.platform import getPlatform, getSysEeprom, getPlatforms
-from arista.core.utils import simulation
+import arista.core.utils as utils
 
 def doSetup(args, platform):
    logging.debug('setting up platform')
@@ -97,13 +97,12 @@ def main():
    args = parseArgs()
 
    if args.simulation:
-      global simulation
-      simulation = True
+      utils.simulation = True
 
    loglevel = logging.DEBUG if args.verbose else logging.INFO
    logging.basicConfig(format='%(levelname)s: %(message)s', level=loglevel,
                        filename=args.logfile)
-   if simulation:
+   if utils.inSimulation():
       logging.info('Running in simulation mode')
 
    logging.debug(args)

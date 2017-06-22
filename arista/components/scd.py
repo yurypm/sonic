@@ -6,7 +6,8 @@ import logging
 from collections import OrderedDict
 
 from ..core.types import Gpio, ResetGpio, NamedGpio
-from ..core.utils import sysfsFmtHex, sysfsFmtDec, sysfsFmtStr, simulation
+from ..core.utils import sysfsFmtHex, sysfsFmtDec, sysfsFmtStr, simulateWith, \
+                         inSimulation
 
 from common import PciComponent, KernelDriver, PciKernelDriver
 
@@ -14,16 +15,19 @@ class ScdHwmonKernelDriver(PciKernelDriver):
    def __init__(self, scd):
       super(ScdHwmonKernelDriver, self).__init__(scd, 'scd-hwmon')
 
+   def writeConfigSim(self, path, data):
+      for filename, value in data.items():
+         logging.info('writting data under %s : %r',
+                      os.path.join(path, filename), value)
+
+   @simulateWith(writeConfigSim)
    def writeConfig(self, path, data):
-      if simulation:
-         print(data)
-      else:
-         for filename, value in data.items():
-            try:
-               with open(os.path.join(path, filename), 'w') as f:
-                  f.write(value)
-            except IOError as e:
-               logging.error('%s %s' % (e.filename, e.strerror))
+      for filename, value in data.items():
+         try:
+            with open(os.path.join(path, filename), 'w') as f:
+               f.write(value)
+         except IOError as e:
+            logging.error('%s %s', e.filename, e.strerror)
 
    def writeObjects(self, components):
       PAGE_SIZE = 4096
@@ -75,12 +79,13 @@ class ScdHwmonKernelDriver(PciKernelDriver):
       self.writeConfig(path, {'init_trigger': '1'})
       super(ScdHwmonKernelDriver, self).finish()
 
+   def resetSim(self, value):
+      resets = self.component.getSysfsResetNameList()
+      logging.debug('reseting devices %s', resets)
+
+   @simulateWith(resetSim)
    def reset(self, value):
       path = self.getSysfsPath()
-      if simulation:
-         resets = self.component.getSysfsResetNameList()
-         logging.debug('reseting devices %s' % resets)
-         return
       for reset in self.component.getSysfsResetNameList():
          with open(os.path.join(path, reset), 'w') as f:
             f.write('1' if value else '0')
@@ -189,7 +194,7 @@ class ScdKernelDriver(PciKernelDriver):
       return {key: ",".join(map(fmt, variables[key])) for key, fmt in files}
 
    def writeConfig(self, path, data):
-      if simulation:
+      if inSimulation():
          print(data)
       else:
          for filename, value in data.items():
@@ -223,7 +228,7 @@ class ScdKernelDriver(PciKernelDriver):
 
    def reset(self, value):
       path = self.getSysfsPath()
-      if simulation:
+      if inSimulation():
          resets = self.component.getSysfsResetNameList()
          logging.debug('reseting devices %s' % resets)
          return

@@ -3,14 +3,14 @@ from __future__ import print_function
 import logging
 import subprocess
 
-from utils import simulation
+from utils import inSimulation
 
 def modprobe(name, args=None):
    logging.debug('loading module %s' % name)
    if args is None:
       args = []
    args = ['modprobe', name.replace('-', '_')] + args
-   if simulation:
+   if inSimulation():
       logging.debug('exec: %s' % ' '.join(args))
    else:
       subprocess.check_call(args)
@@ -18,7 +18,7 @@ def modprobe(name, args=None):
 def rmmod(name):
    logging.debug('unloading module %s' % name)
    args = ['modprobe', '-r', name.replace('-', '_')]
-   if simulation:
+   if inSimulation():
       logging.debug('exec: %s' % ' '.join(args))
    else:
       subprocess.check_call(args)

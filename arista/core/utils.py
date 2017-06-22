@@ -1,4 +1,7 @@
+
 import logging
+
+from functools import wraps
 
 def sysfsFmtHex(x):
    return "0x%08x" % x
@@ -31,13 +34,57 @@ class NoopObj(object):
    def __getattr__(self, attr):
       return self.noop(attr)
 
-# set simulation to True if not on a Arista box
-simulation = True
-with open('/proc/cmdline') as f:
-   simulation = "Aboot=" not in f.read()
+CMDLINE_PATH = '/proc/cmdline'
 
-if simulation:
-   SMBus = type('SMBus', (NoopObj,), {})
-else:
-   from smbus import SMBus
+cmdlineDict = {}
+def getCmdlineDict():
+   global cmdlineDict
+
+   if cmdlineDict:
+      return cmdlineDict
+
+   data = {}
+   with open(CMDLINE_PATH) as f:
+      for entry in f.read().split():
+         idx = entry.find('=')
+         if idx == -1:
+            data[entry] = None
+         else:
+            data[entry[:idx]] = entry[idx+1:]
+
+   cmdlineDict = data
+   return data
+
+# force simulation to be True if not on a Arista box
+simulation = True
+
+# simulation related globals
+SMBus = None
+
+def inSimulation():
+   return simulation
+
+def simulateWith(simulatedFunc):
+   def simulateThisFunc(func):
+      @wraps(func)
+      def funcWrapper(*args, **kwargs):
+         if inSimulation():
+            return simulatedFunc(*args, **kwargs)
+         return func(*args, **kwargs)
+      return funcWrapper
+   return simulateThisFunc
+
+def libraryInit():
+   global simulation, debug, SMBus
+
+   cmdline = getCmdlineDict()
+   if "Aboot" in cmdline:
+      simulation = False
+
+   if simulation:
+      SMBus = type('SMBus', (NoopObj,), {})
+   else:
+      from smbus import SMBus
+
+libraryInit()
 

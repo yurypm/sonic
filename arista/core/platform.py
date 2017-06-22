@@ -8,7 +8,7 @@ import sys
 from collections import OrderedDict, namedtuple
 
 from component import Component
-from utils import simulation, incrange
+from utils import simulateWith, incrange
 from driver import modprobe, rmmod, KernelDriver
 
 import prefdl
@@ -75,11 +75,12 @@ def readPrefdl():
             logging.warn('error seen: %s' % e)
    raise RuntimeError("Could not find valid system eeprom")
 
-def getPrefdlData():
-   if simulation:
-      logging.debug('bypass prefdl reading by returning default values')
-      return {'SKU': 'simulation'}
+def getPrefdlDataSim():
+   logging.debug('bypass prefdl reading by returning default values')
+   return {'SKU': 'simulation'}
 
+@simulateWith(getPrefdlDataSim)
+def getPrefdlData():
    return readPrefdl().data()
 
 def getSysEeprom():

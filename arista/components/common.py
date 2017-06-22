@@ -4,7 +4,7 @@ import os
 
 from ..core.component import Component
 from ..core.driver import KernelDriver
-from ..core.utils import simulation
+from ..core.utils import inSimulation
 from ..core.types import PciAddr, I2cAddr
 
 class PciComponent(Component):
@@ -48,7 +48,7 @@ class I2cKernelDriver(KernelDriver):
       path = os.path.join(self.getSysfsBusPath(), 'new_device')
       logging.debug('creating i2c device %s on bus %d at 0x%02x' %
                                                (self.name, addr.bus, addr.address))
-      if simulation:
+      if inSimulation():
          return
       if os.path.exists(devicePath):
          logging.debug('i2c device %s already exists' % devicePath)
@@ -58,7 +58,7 @@ class I2cKernelDriver(KernelDriver):
 
    def clean(self):
       # i2c kernel devices are automatically cleaned when the module is removed
-      if simulation:
+      if inSimulation():
          return
       path = os.path.join(self.getSysfsBusPath(), 'delete_device')
       addr = self.component.addr
