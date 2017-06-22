@@ -3,23 +3,25 @@ from __future__ import print_function
 import logging
 import subprocess
 
-from utils import inSimulation
+from utils import inDebug, inSimulation
 
 def modprobe(name, args=None):
-   logging.debug('loading module %s' % name)
+   logging.debug('loading module %s', name)
    if args is None:
       args = []
    args = ['modprobe', name.replace('-', '_')] + args
+   if inDebug():
+      args += [ 'dyndbg=+pf' ]
    if inSimulation():
-      logging.debug('exec: %s' % ' '.join(args))
+      logging.debug('exec: %s', ' '.join(args))
    else:
       subprocess.check_call(args)
 
 def rmmod(name):
-   logging.debug('unloading module %s' % name)
+   logging.debug('unloading module %s', name)
    args = ['modprobe', '-r', name.replace('-', '_')]
    if inSimulation():
-      logging.debug('exec: %s' % ' '.join(args))
+      logging.debug('exec: %s', ' '.join(args))
    else:
       subprocess.check_call(args)
 

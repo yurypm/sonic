@@ -12,6 +12,9 @@ from arista.core.platform import getPlatform, getSysEeprom, getPlatforms
 import arista.core.utils as utils
 
 def doSetup(args, platform):
+   if args.debug:
+      utils.debug = True
+
    logging.debug('setting up platform')
    platform.setup()
    if args.reset:
@@ -72,6 +75,8 @@ def parseArgs():
    sub = subparsers.add_parser('setup', help='setup drivers for this platform')
    sub.add_argument('-r', '--reset', action='store_true',
                     help='put devices out of reset after init')
+   sub.add_argument('-d', '--debug', action='store_true',
+                    help='enable debug features for the drivers')
    sub = subparsers.add_parser('clean', help='unload drivers for this platform')
    sub.add_argument('-r', '--reset', action='store_true',
                     help='put devices in reset before cleanup')

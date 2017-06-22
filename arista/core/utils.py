@@ -55,11 +55,17 @@ def getCmdlineDict():
    cmdlineDict = data
    return data
 
+# debug flag, if enabled should use the most tracing possible
+debug = False
+
 # force simulation to be True if not on a Arista box
 simulation = True
 
 # simulation related globals
 SMBus = None
+
+def inDebug():
+   return debug
 
 def inSimulation():
    return simulation
@@ -80,6 +86,9 @@ def libraryInit():
    cmdline = getCmdlineDict()
    if "Aboot" in cmdline:
       simulation = False
+
+   if "arista-debug" in cmdline:
+      debug = True
 
    if simulation:
       SMBus = type('SMBus', (NoopObj,), {})
