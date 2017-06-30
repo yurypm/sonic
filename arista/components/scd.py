@@ -52,8 +52,8 @@ class ScdHwmonKernelDriver(PciKernelDriver):
       scd = self.component
       data = []
 
-      for i, addr in enumerate(scd.masters, 0):
-         data += ["master %#x %d" % (addr, i)]
+      for addr, info in scd.masters.items():
+         data += ["master %#x %d %d" % (addr, info['id'], info['bus'])]
 
       for addr, name in scd.leds:
          data += ["led %#x %s" % (addr, name)]
@@ -174,7 +174,7 @@ class ScdKernelDriver(PciKernelDriver):
          gpio_active_low.append(active_low_mask)
 
       (led_addrs, led_names) = zip(*scd.leds)
-      master_addrs = scd.masters
+      master_addrs = scd.masters.keys()
 
       files = [
          ('master_addrs', sysfsFmtHex),
@@ -253,18 +253,23 @@ class Scd(PciComponent):
          self.addDriver(ScdHwmonKernelDriver)
       else:
          self.addDriver(ScdKernelDriver)
-      self.masters = []
+      self.masters = OrderedDict()
       self.resets = []
       self.gpios = []
       self.qsfps = OrderedDict()
       self.sfps = OrderedDict()
       self.leds = []
 
-   def addSmbusMaster(self, addr):
-      self.masters += [addr]
+   def addSmbusMaster(self, addr, id, bus=8):
+      self.masters[addr] = {
+         'id': id,
+         'bus': bus,
+      }
 
-   def addSmbusMasterRange(self, addr, count, spacing=0x100):
-      self.masters += range(addr, addr + (count + 1) * spacing, spacing)
+   def addSmbusMasterRange(self, addr, count, spacing=0x100, bus=8):
+      addrs = range(addr, addr + (count + 1) * spacing, spacing)
+      for i, addr in enumerate(addrs, 0):
+         self.addSmbusMaster(addr, i, bus)
 
    def addLed(self, addr, name):
       self.leds += [(addr, name)]

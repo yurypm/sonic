@@ -70,3 +70,13 @@ class Gardena(Platform):
          scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
          addr += 0x10
          bus += 1
+
+      cpld = Scd(PciAddr(bus=0xff, device=0x0b, func=3), newDriver=True)
+      self.addComponent(cpld)
+
+      cpld.addSmbusMasterRange(0x8000, 4, 0x80, 4)
+      cpld.addComponents([
+         I2cKernelComponent(I2cAddr(73, 0x4c), 'max6658'),
+         I2cKernelComponent(I2cAddr(74, 0x4e), 'pmbus'),
+      ])
+
