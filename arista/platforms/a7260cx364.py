@@ -1,4 +1,4 @@
-from ..core.platform import registerPlatform, Inventory, Platform, Xcvrs
+from ..core.platform import registerPlatform, Platform
 from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
@@ -13,11 +13,10 @@ class Gardena(Platform):
    def __init__(self):
       super(Gardena, self).__init__()
 
-      self._inventory.addXcvrs(Xcvrs(0, 65, 0, 63, 64, 65, 9,
-                                     Inventory._portToEeprom(0, 65, 10)))
-
       self.sfpRange = incrange(65, 66)
       self.qsfpRange = incrange(1, 64)
+
+      self.inventory.addPorts(qsfps=self.qsfpRange, sfps=self.sfpRange)
 
       self.addDriver(KernelDriver, 'rook-fan-cpld')
       self.addDriver(KernelDriver, 'rook-led-driver')
@@ -58,15 +57,17 @@ class Gardena(Platform):
       addr = 0xA010
       bus = 9
       for xcvrId in sorted(self.qsfpRange):
-         scd.addQsfp(addr, xcvrId)
+         xcvr = scd.addQsfp(addr, xcvrId, bus)
+         self.inventory.addXcvr(xcvr)
          scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
          addr += 0x10
          bus += 1
 
-      addr = 0xA400
+      addr = 0xA410
       bus = 7
       for xcvrId in sorted(self.sfpRange):
-         scd.addSfp(addr, xcvrId)
+         xcvr = scd.addSfp(addr, xcvrId, bus)
+         self.inventory.addXcvr(xcvr)
          scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
          addr += 0x10
          bus += 1

@@ -1,4 +1,4 @@
-from ..core.platform import registerPlatform, Inventory, Platform, Xcvrs
+from ..core.platform import registerPlatform, Platform
 from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
@@ -13,13 +13,13 @@ class Cloverdale(Platform):
    def __init__(self):
       super(Cloverdale, self).__init__()
 
-      self._inventory.addXcvrs(Xcvrs(0, 31, 0, 32, 0, 0, 10,
-                                     Inventory._portToEeprom(0, 31, 10)))
-
       self.fanCount = 4
       self.qsfp40gAutoRange = incrange(1, 24)
       self.qsfp40gOnlyRange = incrange(25, 32)
+      self.allQsfps = sorted(self.qsfp40gAutoRange + self.qsfp40gOnlyRange)
       self.sfpRange = []
+
+      self.inventory.addPorts(qsfps=self.allQsfps)
 
       self.addDriver(KernelDriver, 'raven-fan-driver')
 
@@ -77,8 +77,9 @@ class Cloverdale(Platform):
 
       addr = 0x5010
       bus = 10
-      for xcvrId in sorted(self.qsfp40gAutoRange + self.qsfp40gOnlyRange):
-         scd.addQsfp(addr, xcvrId)
+      for xcvrId in self.allQsfps:
+         xcvr = scd.addQsfp(addr, xcvrId, bus)
          scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+         self.inventory.addXcvr(xcvr)
          addr += 0x10
          bus += 1

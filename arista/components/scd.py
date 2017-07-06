@@ -5,11 +5,80 @@ import logging
 
 from collections import OrderedDict
 
+from ..core.inventory import Xcvr
 from ..core.types import Gpio, ResetGpio, NamedGpio
 from ..core.utils import sysfsFmtHex, sysfsFmtDec, sysfsFmtStr, simulateWith, \
                          inSimulation
 
 from common import PciComponent, KernelDriver, PciKernelDriver
+
+class ScdKernelXcvr(Xcvr):
+   def __init__(self, portNum, xcvrType, bus, driver):
+      Xcvr.__init__(self, portNum, xcvrType, bus)
+      self.driver = driver
+      self.typeStr = 'qsfp' if xcvrType == Xcvr.QSFP else 'sfp'
+      self.prefix = '%s%d_' % (self.typeStr, portNum)
+      self.prefixPath = os.path.join(driver.getSysfsPath(), self.prefix)
+
+   def getSysfsGpio(self, name):
+      return '%s%s' % (self.prefixPath, name)
+
+   def readValueSim(self, name):
+      logging.info('read xcvr %s entry %s', self.prefix, name)
+      return "1"
+
+   @simulateWith(readValueSim)
+   def readValue(self, name):
+      with open(self.getSysfsGpio(name), 'r') as f:
+         return f.read().rstrip()
+
+   def writeValueSim(self, name, value):
+      logging.info('write xcvr %s entry %s value %s', self.prefix, name, value)
+      return True
+
+   @simulateWith(writeValueSim)
+   def writeValue(self, name, value):
+      with open(self.getSysfsGpio(name), 'w') as f:
+         f.write(str(value))
+      return True
+
+   def getPresence(self):
+      return self.readValue('present') == '1'
+
+   def getLowPowerMode(self):
+      if self.xcvrType == Xcvr.SFP:
+         return False
+      return self.readValue('lp_mode') == '1'
+
+   def setLowPowerMode(self, value):
+      if self.xcvrType == Xcvr.SFP:
+         return False
+      return self.writeValue('lp_mode', '1' if value else '0')
+
+   def reset(self, value):
+      if self.xcvrType == Xcvr.SFP:
+         return False
+      return self.writeValue('reset', '1' if value else '0')
+
+class ScdOldKernelXcvr(ScdKernelXcvr):
+   def readValue(self, name):
+      gpio =  self.getSysfsGpio(name)
+      directionPath = os.path.join(gpio, 'direction')
+      if os.path.exists(directionPath):
+         with open(directionPath, 'w') as f:
+            f.write("in")
+      with open(os.path.join(gpio, 'value'), 'r') as f:
+         return f.read().rstrip()
+
+   def writeValue(self, name, value):
+      gpio =  self.getSysfsGpio(name)
+      directionPath = os.path.join(gpio, 'direction')
+      if os.path.exists(directionPath):
+         with open(directionPath, 'w') as f:
+            f.write("out")
+      with open(os.path.join(gpio, 'value'), 'w') as f:
+         f.write(str(value))
+      return True
 
 class ScdHwmonKernelDriver(PciKernelDriver):
    def __init__(self, scd):
@@ -251,8 +320,10 @@ class Scd(PciComponent):
       self.addDriver(KernelDriver, 'scd')
       if newDriver:
          self.addDriver(ScdHwmonKernelDriver)
+         self.xcvrCls = ScdKernelXcvr
       else:
          self.addDriver(ScdKernelDriver)
+         self.xcvrCls = ScdOldKernelXcvr
       self.masters = OrderedDict()
       self.resets = []
       self.gpios = []
@@ -289,9 +360,10 @@ class Scd(PciComponent):
    def addGpios(self, gpios):
       self.gpios += gpios
 
-   def addQsfp(self, addr, xcvrId):
+   def addQsfp(self, addr, xcvrId, bus):
       self.qsfps[addr] = {
          'id': xcvrId,
+         'bus': bus,
          'gpios': [
             Gpio(0, True, True),
             Gpio(2, True, True),
@@ -302,10 +374,12 @@ class Scd(PciComponent):
             Gpio(8, False, True),
          ]
       }
+      return self.xcvrCls(xcvrId, Xcvr.QSFP, bus, self.drivers[1])
 
-   def addSfp(self, addr, xcvrId):
+   def addSfp(self, addr, xcvrId, bus):
       self.sfps[addr] = {
          'id': xcvrId,
+         'bus': bus,
          'gpios': [
             Gpio(0, True, False),
             Gpio(1, True, False),
@@ -318,6 +392,7 @@ class Scd(PciComponent):
             Gpio(8, False, False),
          ]
       }
+      return self.xcvrCls(xcvrId, Xcvr.SFP, bus, self.drivers[1])
 
    def allGpios(self):
       def zipXcvr(xcvrType, gpio_names, entries):

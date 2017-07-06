@@ -1,4 +1,4 @@
-from ..core.platform import registerPlatform, Inventory, Platform, Xcvrs
+from ..core.platform import registerPlatform, Platform
 from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
@@ -12,11 +12,10 @@ class Upperlake(Platform):
    def __init__(self):
       super(Upperlake, self).__init__()
 
-      self._inventory.addXcvrs(Xcvrs(0, 33, 0, 32, 33, 34, 18,
-                                     Inventory._portToEeprom(0, 33, 18)))
-
       self.sfpRange = incrange(33, 34)
       self.qsfp100gRange = incrange(1, 32)
+
+      self.inventory.addPorts(sfps=self.sfpRange, qsfps=self.qsfp100gRange)
 
       self.addDriver(KernelDriver, 'crow-fan-driver')
 
@@ -71,13 +70,15 @@ class Upperlake(Platform):
       # for xcvrId in self.sfpRange:
       #   scd.addSfp(addr, xcvrId)
       #   scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+      #   self.inventory.addSfp(xcvrId, bus)
       #   addr += 0x10
       #   bus += 1
 
       addr = 0x5050
       bus = 18
       for xcvrId in self.qsfp100gRange:
-         scd.addQsfp(addr, xcvrId)
+         xcvr = scd.addQsfp(addr, xcvrId, bus)
+         self.inventory.addXcvr(xcvr)
          scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
          addr += 0x10
          bus += 1

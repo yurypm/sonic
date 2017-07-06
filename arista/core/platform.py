@@ -7,6 +7,7 @@ import sys
 
 from collections import OrderedDict, namedtuple
 
+from inventory import Inventory
 from component import Component
 from utils import simulateWith, incrange
 from driver import modprobe, rmmod, KernelDriver
@@ -112,35 +113,16 @@ def registerPlatform(skus):
       return cls
    return wrapper
 
-class Inventory(object):
-   def getXcvrs(self):
-      return self._xcvrs
-
-   def addXcvrs(self, xcvrs):
-      self._xcvrs = xcvrs
-
-   @staticmethod
-   def _portToEeprom(port_start, port_end, eeprom_offset):
-      eeprom_path = '/sys/class/i2c-adapter/i2c-{0}/{0}-0050/eeprom'
-      port_to_eeprom_mapping = {}
-      for x in range(port_start, port_end + 1):
-         port_to_eeprom_mapping[x] = eeprom_path.format(x + eeprom_offset)
-      return port_to_eeprom_mapping
-
 class Platform(Component):
    def __init__(self):
       super(Platform, self).__init__()
       self.addDriver(KernelDriver, 'eeprom')
       self.addDriver(KernelDriver, 'i2c-dev')
-      self._inventory = Inventory()
+      self.inventory = Inventory()
 
    def setup(self):
       super(Platform, self).setup()
       super(Platform, self).finish()
 
    def getInventory(self):
-      return self._inventory
-
-
-Xcvrs = namedtuple("Xcvrs", "port_start port_end qsfp_start qsfp_end sfp_start "
-                            "sfp_end eeprom_offset port_eeprom_mapping")
+      return self.inventory
