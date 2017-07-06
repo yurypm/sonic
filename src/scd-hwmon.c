@@ -327,7 +327,6 @@ static void smbus_master_reset(struct scd_master *master)
    mdelay(10);
    cs.reset = 0;
    smbus_master_write_cs(master, cs);
-   smbus_master_read_cs(master);
 }
 
 static s32 scd_smbus_do(struct scd_bus *bus, u16 addr, unsigned short flags,
@@ -621,6 +620,8 @@ static int scd_smbus_master_add(struct scd_context *ctx, u32 addr, u32 id,
          goto fail_bus;
       }
    }
+
+   smbus_master_reset(master);
 
    list_add_tail(&master->list, &ctx->master_list);
 
@@ -1304,7 +1305,7 @@ static int scd_ext_hwmon_probe(struct pci_dev *pdev)
    int err;
 
    if (ctx) {
-      scd_warn("this pci device has already been probed");
+      scd_warn("this pci device has already been probed\n");
       return -EEXIST;
    }
 

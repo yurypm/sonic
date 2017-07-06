@@ -244,7 +244,7 @@ static int leds_pca9555_probe(struct i2c_client *client,
 	chip->dev_name = client->name;
 	i2c_set_clientdata(client, chip);
 
-	leds_init(&chip->leds, client);
+	leds_init(chip->leds, client);
 
 	// configure all pins as output and off from the start
 	err = leds_pca9555_all_output(client);

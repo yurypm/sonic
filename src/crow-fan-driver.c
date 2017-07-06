@@ -101,7 +101,9 @@ static s32 write_buffer_to_cpld(struct device *dev, u8 reg, const char *buf)
 {
     u8 data;
     s32 status;
-    sscanf(buf, "%hhu", &data);
+    if (sscanf(buf, "%hhu", &data) != 1) {
+        return -EINVAL;
+    }
     status = write_cpld(dev, reg, data);
     return status;
 }
@@ -149,7 +151,9 @@ static s32 write_led_color(struct device *dev, u8 reg_green, u8 reg_red,
     u8 green_led;
     u8 red_led;
 
-    sscanf(buf, "%hhu", &data);
+    if (sscanf(buf, "%hhu", &data) != 1) {
+        return -EINVAL;
+    }
 
     switch (data) {
     case GREEN:
@@ -277,8 +281,8 @@ static ssize_t tach_##_name##_show(struct device *dev,                          
 }                                                                                   \
 DEVICE_ATTR(fan##_name##_input, S_IRUGO, tach_##_name##_show, NULL);                \
                                                                                     \
-GENERIC_FAN_READ(_name, ID, FAN##_name##IDREG);                                     \
-DEVICE_ATTR(fan##_name##_ID, S_IRUGO, fan_##_name##_ID_show, NULL);                 \
+GENERIC_FAN_READ(_name, id, FAN##_name##IDREG);                                     \
+DEVICE_ATTR(fan##_name##_id, S_IRUGO, fan_##_name##_id_show, NULL);                 \
                                                                                     \
 GENERIC_FAN_READ(_name, pwm, FAN##_name##PWMREG);                                   \
 GENERIC_FAN_WRITE(_name, pwm, FAN##_name##PWMREG);                                  \
@@ -310,7 +314,7 @@ FAN_DEVICE_ATTR(4);
 
 #define FANATTR(_name)                   \
     &dev_attr_pwm##_name.attr,           \
-    &dev_attr_fan##_name##_ID.attr,      \
+    &dev_attr_fan##_name##_id.attr,      \
     &dev_attr_fan##_name##_input.attr,   \
     &dev_attr_fan##_name##_present.attr, \
     &dev_attr_fan##_name##_led.attr,     \
@@ -338,6 +342,7 @@ static int crow_cpld_probe(struct i2c_client *client,
         return -ENOMEM;
     }
 
+    i2c_set_clientdata(client, data);
     data->client = client;
     hwmon_dev = devm_hwmon_device_register_with_groups(dev, client->name,
                                                        data, fan_groups);
