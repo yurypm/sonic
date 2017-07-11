@@ -128,7 +128,7 @@ def main():
          urllib.urlretrieve(args.swi, swi_path)
       except IOError as e:
          exit("Cannot download SWI '{}'. Error: '{}'. Exiting.".format(
-            args.swi_url, e))
+            args.swi, e))
    else:
       swi_path = args.swi
       if not os.path.exists(swi_path):
