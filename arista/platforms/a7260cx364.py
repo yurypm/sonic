@@ -21,6 +21,7 @@ class Gardena(Platform):
 
       # FIXME: Need to add 'rook-fan-driver'
       # self.addDriver(KernelDriver, 'crow-fan-driver')
+      self.addDriver(KernelDriver, 'rook-led-driver')
 
       scd = Scd(PciAddr(bus=0x06), newDriver=True)
       self.addComponent(scd)
@@ -71,6 +72,7 @@ class Gardena(Platform):
          addr += 0x10
          bus += 1
 
+
       cpld = Scd(PciAddr(bus=0xff, device=0x0b, func=3), newDriver=True)
       self.addComponent(cpld)
 
@@ -78,5 +80,6 @@ class Gardena(Platform):
       cpld.addComponents([
          I2cKernelComponent(I2cAddr(73, 0x4c), 'max6658'),
          I2cKernelComponent(I2cAddr(74, 0x4e), 'pmbus'),
+         I2cKernelComponent(I2cAddr(88, 0x20), 'rook_leds'),
+         I2cKernelComponent(I2cAddr(88, 0x48), 'lm73'),
       ])
-
