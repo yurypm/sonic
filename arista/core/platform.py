@@ -5,7 +5,7 @@ import subprocess
 import os
 import sys
 
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, namedtuple, defaultdict
 
 from inventory import Inventory
 from component import Component, Priority
@@ -17,12 +17,8 @@ import prefdl
 platforms = {}
 syseeprom = None
 
-prefdl_dir = '/host'
-prefdl_path = os.path.join(prefdl_dir, '.system-prefdl')
-fmted_prefdl_path = os.path.join(prefdl_dir, '.syseeprom')
-
-def showMac(m):
-   return ":".join([m[0:2], m[2:4], m[4:6], m[6:8], m[8:10], m[10:12]])
+host_prefdl_path = '/host/.system-prefdl'
+fmted_prefdl_path = '/etc/sonic/.syseeprom'
 
 def formatPrefdlData(data):
    formatDict = {
@@ -35,7 +31,7 @@ def formatPrefdlData(data):
       for kfmt, vfmt in formatDict.items():
          if k in vfmt:
             if kfmt == "MAC":
-               val = showMac(v)
+               val = prefdl.showMac(v)
             else:
                val = v
             fdata[kfmt] = val
@@ -50,30 +46,31 @@ def writeFormattedPrefdl(pfdl, f):
 def readPrefdl():
    if os.path.exists(fmted_prefdl_path):
       with open(fmted_prefdl_path) as fp:
+         logging.debug('reading system eeprom from %s', fmted_prefdl_path)
          return prefdl.PreFdlFromFile(fp)
 
-   if os.path.exists(prefdl_path):
-      with open(prefdl_path) as fp:
-         logging.debug('reading system eeprom from %s', prefdl_path)
+   if os.path.exists(host_prefdl_path):
+      with open(host_prefdl_path) as fp:
+         logging.debug('reading system eeprom from %s', host_prefdl_path)
          pfdl = prefdl.PreFdlFromFile(fp)
       writeFormattedPrefdl(pfdl, fmted_prefdl_path)
       with open(fmted_prefdl_path) as fp:
          return prefdl.PreFdlFromFile(fp)
-   else:
-      modprobe('eeprom')
-      for addr in ['1-0052']:
-         eeprompath = os.path.join('/sys/bus/i2c/drivers/eeprom', addr, 'eeprom')
-         if not os.path.exists(eeprompath):
-            continue
-         try:
-            with open(eeprompath) as fp:
-               logging.debug('reading system eeprom from %s', eeprompath)
-               pfdl = prefdl.decode(fp)
-               pfdl.writeToFile(fmted_prefdl_path)
-               return pfdl
-         except Exception as e:
-            logging.warn('could not obtain prefdl from %s', eeprompath)
-            logging.warn('error seen: %s', e)
+
+   modprobe('eeprom')
+   for addr in ['1-0052']:
+      eeprompath = os.path.join('/sys/bus/i2c/drivers/eeprom', addr, 'eeprom')
+      if not os.path.exists(eeprompath):
+         continue
+      try:
+         with open(eeprompath) as fp:
+            logging.debug('reading system eeprom from %s', eeprompath)
+            pfdl = prefdl.decode(fp)
+            pfdl.writeToFile(fmted_prefdl_path)
+            return pfdl
+      except Exception as e:
+         logging.warn('could not obtain prefdl from %s', eeprompath)
+         logging.warn('error seen: %s', e)
    raise RuntimeError("Could not find valid system eeprom")
 
 def getPrefdlDataSim():

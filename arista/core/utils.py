@@ -113,7 +113,10 @@ def libraryInit():
    if simulation:
       SMBus = type('SMBus', (NoopObj,), {})
    else:
-      from smbus import SMBus
+      try:
+         from smbus import SMBus
+      except ImportError:
+         pass
 
 libraryInit()
 

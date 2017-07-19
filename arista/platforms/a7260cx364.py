@@ -49,12 +49,16 @@ class Gardena(Platform):
       addr = 0x6100
       for xcvrId in self.qsfpRange:
          for laneId in incrange(1, 4):
-            scd.addLed(addr, "qsfp%d_%d" % (xcvrId, laneId))
+            name = "qsfp%d_%d" % (xcvrId, laneId)
+            scd.addLed(addr, name)
+            self.inventory.addXcvrLed(xcvrId, name)
             addr += 0x10
 
       addr = 0x7100
       for xcvrId in self.sfpRange:
-         scd.addLed(addr, "sfp%d" % xcvrId)
+         name = "sfp%d" % xcvrId
+         scd.addLed(addr, name)
+         self.inventory.addXcvrLed(xcvrId, name)
          addr += 0x10
 
       addr = 0xA010

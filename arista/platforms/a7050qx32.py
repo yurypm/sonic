@@ -50,6 +50,8 @@ class Cloverdale(Platform):
          (0x6080, 'psu2'),
          (0x6090, 'beacon'),
       ])
+      self.inventory.addStatusLeds(['status', 'fan_status', 'psu1',
+         'psu2'])
 
       scd.addResets([
          ResetGpio(0x4000, 0, False, 'switch_chip_reset'),
@@ -67,12 +69,16 @@ class Cloverdale(Platform):
       addr = 0x6100
       for xcvrId in self.qsfp40gAutoRange:
          for laneId in incrange(1, 4):
-            scd.addLed(addr, "qsfp%d_%d" % (xcvrId, laneId))
+            name = "qsfp%d_%d" % (xcvrId, laneId)
+            scd.addLed(addr, name)
+            self.inventory.addXcvrLed(xcvrId, name)
             addr += 0x10
 
       addr = 0x6720
       for xcvrId in self.qsfp40gOnlyRange:
-         scd.addLed(addr, "qsfp%d" % xcvrId)
+         name = "qsfp%d" % xcvrId
+         scd.addLed(addr, name)
+         self.inventory.addXcvrLed(xcvrId, name)
          addr += 0x30 if xcvrId % 2 else 0x50
 
       addr = 0x5010

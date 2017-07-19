@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 class Xcvr(object):
 
    SFP = 0
@@ -31,6 +33,9 @@ class Inventory(object):
 
       self.xcvrs = {}
 
+      self.xcvrLeds = defaultdict(list)
+      self.statusLeds = []
+
    def freeze(self):
       # XXX: compute the range and some basic information from the various
       #      collections present in the inventory
@@ -63,5 +68,15 @@ class Inventory(object):
 
    def getPortToI2cAdapterMapping(self):
       return { xcvrId : xcvr.bus for xcvrId, xcvr in self.xcvrs.items() }
+
+   def addXcvrLed(self, xcvrId, name):
+      self.xcvrLeds[xcvrId].append(name)
+
+   def addStatusLed(self, name):
+      self.statusLeds.append(name)
+
+   def addStatusLeds(self, names):
+      self.statusLeds.extend(names)
+
 
 
