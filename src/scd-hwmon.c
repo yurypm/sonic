@@ -820,7 +820,7 @@ static ssize_t attribute_reset_set(struct device *dev,
    if (value != 0 && value != 1)
       return -EINVAL;
 
-   if (value)
+   if (!value)
       offset = RESET_CLEAR_OFFSET;
 
    reg = 1 << reset->bit;
