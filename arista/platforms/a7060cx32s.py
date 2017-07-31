@@ -7,7 +7,7 @@ from ..components.common import I2cKernelComponent
 from ..components.scd import Scd
 
 
-@registerPlatform('DCS-7060CX-32S')
+@registerPlatform(['DCS-7060CX-32S', 'DCS-7060CX-32S-ES'])
 class Upperlake(Platform):
    def __init__(self):
       super(Upperlake, self).__init__()
