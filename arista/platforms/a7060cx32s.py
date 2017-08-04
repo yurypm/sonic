@@ -2,10 +2,10 @@ from ..core.platform import registerPlatform, Platform
 from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
+from ..core.component import Priority
 
 from ..components.common import I2cKernelComponent
 from ..components.scd import Scd
-
 
 @registerPlatform(['DCS-7060CX-32S', 'DCS-7060CX-32S-ES'])
 class Upperlake(Platform):
@@ -23,15 +23,19 @@ class Upperlake(Platform):
       self.addComponent(scd)
 
       scd.addComponents([
-         I2cKernelComponent(I2cAddr(2, 0x1a), 'max6697'),
-         I2cKernelComponent(I2cAddr(3, 0x4c), 'max6658'),
+         I2cKernelComponent(I2cAddr(2, 0x1a), 'max6697',
+                            priority=Priority.BACKGROUND),
+         I2cKernelComponent(I2cAddr(3, 0x4c), 'max6658',
+                            priority=Priority.BACKGROUND),
          I2cKernelComponent(I2cAddr(3, 0x60), 'crow_cpld'),
-         I2cKernelComponent(I2cAddr(3, 0x4e), 'pmbus'), # ucd90120A
-         I2cKernelComponent(I2cAddr(5, 0x50), 'eeprom'),
-         I2cKernelComponent(I2cAddr(5, 0x58), 'pmbus'),
-         I2cKernelComponent(I2cAddr(6, 0x50), 'eeprom'),
-         I2cKernelComponent(I2cAddr(6, 0x58), 'pmbus'),
-         I2cKernelComponent(I2cAddr(7, 0x4e), 'pmbus'), # ucd90120A
+         I2cKernelComponent(I2cAddr(3, 0x4e), 'pmbus',
+                            priority=Priority.BACKGROUND), # ucd90120A
+         I2cKernelComponent(I2cAddr(5, 0x58), 'pmbus',
+                            priority=Priority.BACKGROUND),
+         I2cKernelComponent(I2cAddr(6, 0x58), 'pmbus',
+                            priority=Priority.BACKGROUND),
+         I2cKernelComponent(I2cAddr(7, 0x4e), 'pmbus',
+                            priority=Priority.BACKGROUND), # ucd90120A
       ])
 
       scd.addSmbusMasterRange(0x8000, 5, 0x80)

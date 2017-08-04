@@ -8,8 +8,8 @@ import sys
 from collections import OrderedDict, namedtuple
 
 from inventory import Inventory
-from component import Component
-from utils import simulateWith, incrange
+from component import Component, Priority
+from utils import simulateWith
 from driver import modprobe, rmmod, KernelDriver
 
 import prefdl
@@ -120,9 +120,9 @@ class Platform(Component):
       self.addDriver(KernelDriver, 'i2c-dev')
       self.inventory = Inventory()
 
-   def setup(self):
+   def setup(self, priority=Priority.DEFAULT):
       super(Platform, self).setup()
-      super(Platform, self).finish()
+      super(Platform, self).finish(priority)
 
    def getInventory(self):
       return self.inventory

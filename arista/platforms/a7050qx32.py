@@ -2,11 +2,11 @@ from ..core.platform import registerPlatform, Platform
 from ..core.driver import KernelDriver
 from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
+from ..core.component import Priority
 
 from ..components.common import I2cKernelComponent
 from ..components.scd import Scd
 from ..components.ds460 import Ds460
-
 
 @registerPlatform('DCS-7050QX-32')
 class Cloverdale(Platform):
@@ -27,12 +27,12 @@ class Cloverdale(Platform):
       self.addComponent(scd)
 
       scd.addComponents([
-         I2cKernelComponent(I2cAddr(2, 0x4c), 'max6658'),
-         I2cKernelComponent(I2cAddr(3, 0x48), 'lm73'),
-         Ds460(I2cAddr(5, 0x58)),
-         I2cKernelComponent(I2cAddr(5, 0x50), 'eeprom'),
-         Ds460(I2cAddr(6, 0x58)),
-         I2cKernelComponent(I2cAddr(6, 0x50), 'eeprom'),
+         I2cKernelComponent(I2cAddr(2, 0x4c), 'max6658',
+                            priority=Priority.BACKGROUND),
+         I2cKernelComponent(I2cAddr(3, 0x48), 'lm73',
+                            priority=Priority.BACKGROUND),
+         Ds460(I2cAddr(5, 0x58), priority=Priority.BACKGROUND),
+         Ds460(I2cAddr(6, 0x58), priority=Priority.BACKGROUND),
 
          # Due to a risk of an unrecoverable firmware corruption when a pmbus
          # transaction is done at the same moment of the poweroff, the handling of

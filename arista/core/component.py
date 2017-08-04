@@ -1,11 +1,18 @@
 from __future__ import print_function
+from collections import defaultdict
 
 from driver import Driver
+from utils import flatten
+
+class Priority:
+   DEFAULT = 0
+   BACKGROUND = 1
 
 class Component(object):
-   def __init__(self, **kwargs):
-      self.components = []
+   def __init__(self, priority=Priority.DEFAULT, **kwargs):
+      self.components = defaultdict(list)
       self.drivers = []
+      self.priority = priority
       for key, value in kwargs.items():
          setattr(self, key, value)
       self.params = kwargs.keys()
@@ -16,12 +23,15 @@ class Component(object):
 
    def addComponents(self, components):
       assert all(isinstance(c, Component) for c in components)
-      self.components += components
+      for component in components:
+         component.priority = max(component.priority, self.priority)
+         self.components[component.priority].append(component)
       return self
 
    def addComponent(self, component):
       assert isinstance(component, Component)
-      self.components += [component]
+      component.priority = max(component.priority, self.priority)
+      self.components[component.priority].append(component)
       return self
 
    def addDriver(self, driverCls, *args, **kwargs):
@@ -35,22 +45,22 @@ class Component(object):
       for driver in self.drivers:
          driver.finish()
 
-   def finish(self):
+   def finish(self, priority=Priority.DEFAULT):
       # underlying component are initialized recursively but require the parent to
       # be fully initialized
-      for component in self.components:
+      for component in self.components[priority]:
          component.setup()
-      for component in self.components:
-         component.finish()
+      for component in self.components[Priority.DEFAULT]:
+         component.finish(priority)
 
    def clean(self):
-      for component in reversed(self.components):
+      for component in flatten(self.components.values()):
          component.clean()
       for driver in reversed(self.drivers):
          driver.clean()
 
    def resetIn(self):
-      for component in reversed(self.components):
+      for component in flatten(self.components.values()):
          component.resetIn()
       for driver in reversed(self.drivers):
          driver.resetIn()
@@ -58,7 +68,7 @@ class Component(object):
    def resetOut(self):
       for driver in self.drivers:
          driver.resetOut()
-      for component in self.components:
+      for component in flatten(self.components.values()):
          component.resetOut()
 
    def _dumpDrivers(self, depth, prefix):
@@ -76,7 +86,7 @@ class Component(object):
       if self.drivers:
          self._dumpDrivers(depth, prefix)
       print('%s%scomponents:' % (spacer, prefix))
-      for component in self.components:
+      for component in self.components.values():
          component.dump(depth + 1)
 
    def dump(self, depth=0, prefix=' - '):

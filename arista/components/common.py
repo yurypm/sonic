@@ -18,8 +18,8 @@ class I2cComponent(Component):
       super(I2cComponent, self).__init__(addr=addr, **kwargs)
 
 class I2cKernelComponent(I2cComponent):
-   def __init__(self, addr, name):
-      super(I2cKernelComponent, self).__init__(addr)
+   def __init__(self, addr, name, **kwargs):
+      super(I2cKernelComponent, self).__init__(addr, **kwargs)
       self.addDriver(I2cKernelDriver, name)
 
 class PciKernelDriver(KernelDriver):

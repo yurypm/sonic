@@ -14,7 +14,7 @@
 drivers_start() {
     echo "Loading arista drivers..."
     depmod -a
-    /usr/bin/arista setup --reset
+    /usr/bin/arista setup --reset --background
     echo "done."
 }
 drivers_stop() {

@@ -5,9 +5,9 @@ from ..core.utils import SMBus
 from common import I2cKernelComponent
 
 class Ds460(I2cKernelComponent):
-   def __init__(self, addr):
+   def __init__(self, addr, **kwargs):
       # pmbus if dps460 is not available
-      super(Ds460, self).__init__(addr, 'dps460')
+      super(Ds460, self).__init__(addr, 'dps460', **kwargs)
 
    def setup(self):
       addr = self.addr.address

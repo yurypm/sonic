@@ -5,8 +5,8 @@ from ..core.utils import SMBus
 from common import I2cComponent
 
 class Ds125Br(I2cComponent):
-   def __init__(self, addr):
-      super(Ds125Br, self).__init__(addr, channels=8)
+   def __init__(self, addr, **kwargs):
+      super(Ds125Br, self).__init__(addr, channels=8, **kwargs)
 
    def qsfpPortConfig(self, amplitude):
       disableCrc = 0x18
@@ -78,9 +78,6 @@ class Ds125Br(I2cComponent):
       bus = SMBus(self.addr.bus)
       for addr, config in self.getPortConfigs():
          self.setupPort(bus, addr, config)
-
-   def finish(self):
-      pass
 
    def clean(self):
       pass

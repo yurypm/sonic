@@ -1,5 +1,5 @@
-
 import logging
+import fcntl
 
 from functools import wraps
 
@@ -14,6 +14,26 @@ def sysfsFmtStr(x):
 
 def incrange(start, stop):
    return range(start, stop + 1)
+
+def flatten(nestedList):
+   return [val for sublist in nestedList for val in sublist]
+
+class FileLock:
+   def __init__(self, lock_file):
+      self.f = open(lock_file, 'w')
+
+   def lock(self):
+      fcntl.flock(self.f, fcntl.LOCK_EX)
+
+   def unlock(self):
+      fcntl.flock(self.f, fcntl.LOCK_UN)
+      self.f.close()
+
+   def __enter__(self):
+      self.lock()
+
+   def __exit__(self, exc_type, exc_val, traceback):
+      self.unlock()
 
 class NoopObj(object):
    def __init__(self, *args, **kwargs):

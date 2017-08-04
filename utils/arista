@@ -6,27 +6,53 @@ import logging
 import argparse
 import time
 import sys
+import os
 
 import arista.platforms
-from arista.core.platform import getPlatform, getSysEeprom, getPlatforms
 import arista.core.utils as utils
+from arista.core.platform import getPlatform, getSysEeprom, getPlatforms
+from arista.core.component import Priority
+
+lock_file = '/var/lock/arista.lock'
+
+def setupInBackground(platform):
+      try:
+         pid = os.fork()
+      except OSError:
+         logging.warn('fork failed, setting up background drivers normally')
+         platform.setup(Priority.BACKGROUND)
+         return
+      if pid > 0: # parent returned from fork
+         os._exit(0)
+      platform.setup(Priority.BACKGROUND)
 
 def doSetup(args, platform):
    if args.debug:
       utils.debug = True
 
-   logging.debug('setting up platform')
-   platform.setup()
+   with utils.FileLock(lock_file):
+      logging.debug('setting up critical drivers')
+      platform.setup(Priority.DEFAULT)
+
+      if args.background:
+         logging.debug('forking and setting up slow drivers in background')
+         setupInBackground(platform)
+      else:
+         logging.debug('setting up background drivers normally')
+         platform.setup(Priority.BACKGROUND)
+
    if args.reset:
       logging.debug('taking devices out of reset')
       platform.resetOut()
 
 def doClean(args, platform):
    if args.reset:
-      logging.debug('puting devices in reset')
+      logging.debug('putting devices in reset')
       platform.resetIn()
+
    logging.debug('cleaning up platform')
-   platform.clean()
+   with utils.FileLock(lock_file):
+      platform.clean()
 
 def doReset(args, platform):
    if args.reset_out:
@@ -77,6 +103,8 @@ def parseArgs():
                     help='put devices out of reset after init')
    sub.add_argument('-d', '--debug', action='store_true',
                     help='enable debug features for the drivers')
+   sub.add_argument('-b', '--background', action='store_true',
+                    help='initialize slow, non-critical drivers in background')
    sub = subparsers.add_parser('clean', help='unload drivers for this platform')
    sub.add_argument('-r', '--reset', action='store_true',
                     help='put devices in reset before cleanup')
