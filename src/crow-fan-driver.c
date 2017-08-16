@@ -19,8 +19,12 @@
 #include <linux/device.h>
 #include <linux/hwmon.h>
 #include <linux/hwmon-sysfs.h>
+#include <linux/leds.h>
 
 #define DRIVER_NAME "crow-cpld-fans"
+
+#define NUM_FANS 4
+#define LED_NAME_MAX_SZ 20
 
 #define TACH1LOWREG 0
 #define TACH1HIGHREG 1
@@ -46,13 +50,20 @@
 #define CROWCPLDREVREG 0x40
 #define SCRATCHREG 0x41
 
-#define OFF 0
-#define GREEN 1
-#define RED 2
-#define YELLOW 3
+#define FAN_LED_OFF 0
+#define FAN_LED_GREEN 1
+#define FAN_LED_RED 2
+#define FAN_LED_YELLOW 3
+
+struct crow_led {
+    char name[LED_NAME_MAX_SZ];
+    struct led_classdev cdev;
+    int fan_index;
+};
 
 struct crow_cpld_data {
     struct i2c_client *client;
+    struct crow_led leds[NUM_FANS];
 };
 
 static s32 read_cpld(struct device *dev, u8 reg, char *buf)
@@ -86,156 +97,204 @@ static s32 write_cpld(struct device *dev, u8 reg, u8 byte)
     return err;
 }
 
-static s32 read_cpld_in_buffer(struct device *dev, u8 reg, char *buf)
+static s32 read_cpld_buf(struct device *dev, u8 reg, char *buf)
 {
     s32 status;
     u8 data;
+
     status = read_cpld(dev, reg, &data);
     if (status) {
         return status;
     }
+
     return sprintf(buf, "%hhu\n", data);
 }
 
-static s32 write_buffer_to_cpld(struct device *dev, u8 reg, const char *buf)
+static s32 write_cpld_buf(struct device *dev, u8 reg, const char *buf)
 {
     u8 data;
     s32 status;
+
     if (sscanf(buf, "%hhu", &data) != 1) {
         return -EINVAL;
     }
+
     status = write_cpld(dev, reg, data);
+
     return status;
 }
 
-static s32 read_led_color(struct device *dev, u8 reg_green, u8 reg_red, char *buf,
-                          int index)
+static s32 read_led_color(struct device *dev, int index, u8 *color)
 {
-    s32 status;
+    s32 err;
     u8 data;
-    int fanIndex = index - 1;
     unsigned char read_value_g = 0;
     unsigned char read_value_r = 0;
-    int color = OFF;
 
-    status = read_cpld(dev, reg_green, &data);
-    if (status) {
-        return status;
-    }
-    read_value_g = (data >> fanIndex) & 0x01;
+    err = read_cpld(dev, FANGREENLEDREG, &data);
+    if (err)
+        return err;
+    read_value_g = (data >> index) & 0x01;
 
-    status = read_cpld(dev, reg_red, &data);
-    if (status) {
-        return status;
-    }
-    read_value_r = (data >> fanIndex) & 0x01;
+    err = read_cpld(dev, FANREDLEDREG, &data);
+    if (err)
+        return err;
+    read_value_r = (data >> index) & 0x01;
+
+    *color = FAN_LED_OFF;
     if((!read_value_g) && read_value_r) {
-       color = GREEN;
+       *color = FAN_LED_GREEN;
     } else if (read_value_g && (!read_value_r)) {
-       color = RED;
+       *color = FAN_LED_RED;
     } else if((!read_value_g) && (!read_value_r)) {
-       color = YELLOW;
+       *color = FAN_LED_YELLOW;
     }
 
-    return sprintf(buf, "%d\n", color);
+    return 0;
 }
 
-static s32 write_led_color(struct device *dev, u8 reg_green, u8 reg_red,
-                           const char *buf, int index)
+static s32 read_led_color_buf(struct device *dev, char *buf, int index)
+{
+    int err;
+    u8 val;
+
+    err = read_led_color(dev, index, &val);
+    if (err)
+        return err;
+
+    return sprintf(buf, "%d\n", val);
+}
+
+static s32 write_led_color(struct device *dev, int value, int index)
 {
     s32 status;
-    u8 data;
     u8 red_value;
     u8 green_value;
-    int fanIndex = index - 1;
     u8 green_led;
     u8 red_led;
 
-    if (sscanf(buf, "%hhu", &data) != 1) {
+    if (value > 3)
         return -EINVAL;
-    }
 
-    switch (data) {
-    case GREEN:
+    switch (value) {
+    case FAN_LED_GREEN:
         green_led = 1;
         red_led = 0;
         break;
-    case RED:
+    case FAN_LED_RED:
         green_led = 0;
         red_led = 1;
         break;
-    case YELLOW:
+    case FAN_LED_YELLOW:
         green_led = 1;
         red_led = 1;
         break;
-    case OFF:
+    case FAN_LED_OFF:
     default:
         green_led = 0;
         red_led = 0;
         break;
     }
 
-    status = read_cpld(dev, reg_green, &green_value);
+    status = read_cpld(dev, FANGREENLEDREG, &green_value);
     if (status) {
         return status;
     }
-    status = read_cpld(dev, reg_red, &red_value);
+
+    status = read_cpld(dev, FANREDLEDREG, &red_value);
     if (status) {
         return status;
     }
 
     if (green_led) {
-        green_value &= ~(1u << fanIndex);
+        green_value &= ~(1u << index);
     } else {
-        green_value |= (1u << fanIndex);
+        green_value |= (1u << index);
     }
 
     if (red_led) {
-        red_value &= ~(1u << fanIndex);
+        red_value &= ~(1u << index);
     } else {
-        red_value |= (1u << fanIndex);
+        red_value |= (1u << index);
     }
 
-    status = write_cpld(dev, reg_green, green_value);
-    status |= write_cpld(dev, reg_red, red_value);
+    status = write_cpld(dev, FANGREENLEDREG, green_value);
+    status |= write_cpld(dev, FANREDLEDREG, red_value);
 
     return status;
 }
 
-static s32 read_tach(struct device *dev, u8 tachHigh, u8 tachLow, char *buf)
+static s32 write_led_color_buf(struct device *dev, const char *buf, int index)
+{
+    u8 value;
+
+    if (sscanf(buf, "%hhu", &value) != 1) {
+        return -EINVAL;
+    }
+
+    return write_led_color(dev, value, index);
+}
+
+static s32 read_tach(struct device *dev, u8 tachHigh, u8 tachLow, u32 *speed)
 {
     s32 status;
     u8 dataHigh;
     u8 dataLow;
     u32 tachData;
-    u32 speed;
 
     status = read_cpld(dev, tachHigh, &dataHigh);
     status |= read_cpld(dev, tachLow, &dataLow);
     if (status) {
         return status;
     }
+
     tachData = (dataHigh << 8) + dataLow;
     if (!tachData) {
         tachData = 1;
     }
-    speed = 6000000 / tachData;
-    speed = speed / 2;
+    *speed = 6000000 / tachData;
+    *speed = *speed / 2;
+
+    return 0;
+}
+
+static s32 read_tach_buf(struct device *dev, u8 tachHigh, u8 tachLow,
+                         char *buf)
+{
+    u32 speed;
+    int err;
+
+    err = read_tach(dev, tachHigh, tachLow, &speed);
+    if (err)
+        return err;
+
     return sprintf(buf, "%d\n", speed);
 }
 
-static s32 read_fan_present(struct device *dev, u8 reg, char *buf, int index)
+static s32 read_fan_present(struct device *dev, int index, u8 *present)
 {
     s32 status;
     u8 data;
-    int fanIndex = index - 1;
-    char present = 0;
 
-    status = read_cpld(dev, reg, &data);
+    *present = 0;
+    status = read_cpld(dev, FANPRESENTREG, &data);
     if (status) {
         return status;
     }
-    present = ~(data >> fanIndex) & 0x01;
+
+    *present = ~(data >> index) & 0x01;
+    return 0;
+}
+
+static s32 read_fan_present_buf(struct device *dev, char *buf, int index)
+{
+    int err;
+    u8 present;
+
+    err = read_fan_present(dev, index, &present);
+    if (err)
+        return err;
+
     return sprintf(buf, "%d\n", present);
 }
 
@@ -244,7 +303,7 @@ static ssize_t fan_##_name##_##_dev##_show(struct device *dev,                  
                                            struct device_attribute *attr,           \
                                            char *buf)                               \
 {                                                                                   \
-    return read_cpld_in_buffer(dev, _reg, buf);                                     \
+    return read_cpld_buf(dev, _reg, buf);                                     \
 }                                                                                   \
 
 #define GENERIC_FAN_WRITE(_name, _dev, _reg)                                        \
@@ -252,21 +311,21 @@ static ssize_t fan_##_name##_##_dev##_store(struct device *dev,                 
                                             struct device_attribute *attr,          \
                                             const char *buf, size_t count)          \
 {                                                                                   \
-    write_buffer_to_cpld(dev, _reg, buf);                                           \
+    write_cpld_buf(dev, _reg, buf);                                           \
     return count;                                                                   \
 }                                                                                   \
 
-#define GENERIC_LED(_name, _reg_green, _reg_red)                                    \
+#define GENERIC_LED(_name)                                    \
 static ssize_t fan_##_name##_led_show(struct device *dev,                           \
                                       struct device_attribute *attr, char *buf)     \
 {                                                                                   \
-    return read_led_color(dev, _reg_green, _reg_red, buf, _name);                        \
+    return read_led_color_buf(dev, buf, _name-1);                        \
 }                                                                                   \
 static ssize_t fan_##_name##_led_store(struct device *dev,                          \
                                        struct device_attribute *attr,               \
                                        const char *buf, size_t count)               \
 {                                                                                   \
-    write_led_color(dev, _reg_green, _reg_red, buf, _name);                         \
+    write_led_color_buf(dev, buf, _name-1);                         \
     return count;                                                                   \
 }                                                                                   \
 DEVICE_ATTR(fan##_name##_led, S_IRUGO|S_IWGRP|S_IWUSR,                              \
@@ -277,7 +336,7 @@ DEVICE_ATTR(fan##_name##_led, S_IRUGO|S_IWGRP|S_IWUSR,                          
 static ssize_t tach_##_name##_show(struct device *dev,                              \
                                    struct device_attribute *attr, char *buf)        \
 {                                                                                   \
-    return read_tach(dev, TACH##_name##HIGHREG, TACH##_name##LOWREG, buf);          \
+    return read_tach_buf(dev, TACH##_name##HIGHREG, TACH##_name##LOWREG, buf);          \
 }                                                                                   \
 DEVICE_ATTR(fan##_name##_input, S_IRUGO, tach_##_name##_show, NULL);                \
                                                                                     \
@@ -292,17 +351,17 @@ DEVICE_ATTR(pwm##_name, S_IRUGO|S_IWGRP|S_IWUSR,                                
 static ssize_t fan_##_name##_present_show(struct device *dev,                       \
                                           struct device_attribute *attr, char *buf) \
 {                                                                                   \
-    return read_fan_present(dev, FANPRESENTREG, buf, _name);                        \
+    return read_fan_present_buf(dev, buf, _name-1);                        \
 }                                                                                   \
 DEVICE_ATTR(fan##_name##_present, S_IRUGO, fan_##_name##_present_show, NULL);       \
                                                                                     \
-GENERIC_LED(_name, FANGREENLEDREG, FANREDLEDREG)                                    \
+GENERIC_LED(_name)                                    \
 
 
 static ssize_t crow_cpld_rev_show(struct device *dev,
                                   struct device_attribute *attr, char *buf)
 {
-    return read_cpld_in_buffer(dev, CROWCPLDREVREG, buf);
+    return read_cpld_buf(dev, CROWCPLDREVREG, buf);
 }
 
 DEVICE_ATTR(crow_cpld_rev, S_IRUGO, crow_cpld_rev_show, NULL);
@@ -331,24 +390,93 @@ static struct attribute *fan_attrs[] = {
 
 ATTRIBUTE_GROUPS(fan);
 
+static int brightness_set(struct led_classdev *led_cdev, int value)
+{
+    struct crow_led *pled = container_of(led_cdev, struct crow_led, cdev);
+    struct device *dev = led_cdev->dev->parent;
+
+    return write_led_color(dev, value, pled->fan_index);
+}
+
+static int brightness_get(struct led_classdev *led_cdev)
+{
+    struct crow_led *pled = container_of(led_cdev, struct crow_led, cdev);
+    struct device *dev = led_cdev->dev->parent;
+    u8 val;
+    int err;
+
+    err =  read_led_color(dev, pled->fan_index, &val);
+    if (err)
+        return err;
+
+    return val;
+}
+
+static void leds_unregister(struct crow_cpld_data *data, int num_leds)
+{
+   int i = 0;
+
+   for (i = 0; i < num_leds; i++)
+      led_classdev_unregister(&data->leds[i].cdev);
+}
+
+static int leds_init(struct crow_led *leds, struct i2c_client *client)
+{
+    int i;
+    int err;
+    struct crow_cpld_data *data = i2c_get_clientdata(client);
+
+    for (i = 0; i < NUM_FANS; i++) {
+        leds[i].fan_index = i;
+        leds[i].cdev.brightness_set = brightness_set;
+        leds[i].cdev.brightness_get = brightness_get;
+        scnprintf(leds[i].name, LED_NAME_MAX_SZ, "fan%d", leds[i].fan_index + 1);
+        leds[i].cdev.name = leds[i].name;
+    }
+
+    // fan leds initialized to green because no fan fault reg on crow
+    for (i = 0 ; i < NUM_FANS; i++) {
+        err = led_classdev_register(&client->dev, &leds[i].cdev);
+        err |= write_led_color(&client->dev, FAN_LED_GREEN, i);
+        if (err) {
+            leds_unregister(data, i);
+            return err;
+        }
+    }
+
+    return 0;
+}
+
+static int crow_cpld_remove(struct i2c_client *client)
+{
+    struct crow_cpld_data *data = i2c_get_clientdata(client);
+
+    leds_unregister(data, NUM_FANS);
+
+    return 0;
+}
+
 static int crow_cpld_probe(struct i2c_client *client,
                            const struct i2c_device_id *id)
 {
+    int err;
     struct device *dev = &client->dev;
     struct device *hwmon_dev;
     struct crow_cpld_data *data;
     data = devm_kzalloc(dev, sizeof(struct crow_cpld_data), GFP_KERNEL);
-    if (!data) {
+    if (!data)
         return -ENOMEM;
-    }
 
     i2c_set_clientdata(client, data);
     data->client = client;
     hwmon_dev = devm_hwmon_device_register_with_groups(dev, client->name,
                                                        data, fan_groups);
-    if (IS_ERR(hwmon_dev)) {
+    if (IS_ERR(hwmon_dev))
         return PTR_ERR(hwmon_dev);
-    }
+
+    err = leds_init(data->leds, client);
+    if (err)
+        return err;
 
     return 0;
 }
@@ -366,7 +494,7 @@ static struct i2c_driver crow_cpld_driver = {
     },
     .id_table = crow_cpld_id,
     .probe = crow_cpld_probe,
-    /*.remove = crow_cpld_remove,*/
+    .remove = crow_cpld_remove,
 };
 
 module_i2c_driver(crow_cpld_driver);
