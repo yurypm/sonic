@@ -22,9 +22,11 @@
 #include <linux/i2c.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
+#include <linux/leds.h>
 
 #define DRIVER_NAME "rook-fan-cpld"
 
+#define LED_NAME_MAX_SZ 20
 #define MAX_FAN_COUNT 8
 
 #define MINOR_VERSION_REG  0x00
@@ -57,6 +59,8 @@
 #define FAN_INT_PRES (1 << 1)
 #define FAN_INT_ID   (1 << 2)
 
+#define FAN_LED_GREEN 1
+#define FAN_LED_RED 2
 
 static bool managed_leds = true;
 module_param(managed_leds, bool, S_IRUSR | S_IWUSR);
@@ -92,12 +96,15 @@ static struct cpld_info cpld_infos[] = {
 };
 
 struct cpld_fan_data {
+   struct led_classdev cdev;
    bool ok;
    bool present;
    bool forward;
    u16 tach;
    u8 pwm;
    u8 ident;
+   u8 index;
+   char led_name[LED_NAME_MAX_SZ];
 };
 
 struct cpld_data {
@@ -442,9 +449,9 @@ static s32 cpld_read_fan_led(struct cpld_data *data, u8 fan_id, u8 *val)
 
    *val = 0;
    if (green)
-      *val += 1;
+      *val += FAN_LED_GREEN;
    if (red)
-      *val += 2;
+      *val += FAN_LED_RED;
 
    return 0;
 }
@@ -453,12 +460,15 @@ static s32 cpld_write_fan_led(struct cpld_data *cpld, u8 fan_id, u8 val)
 {
    int err = 0;
 
-   if (val & 0x01)
+   if (val > 3)
+      return -EINVAL;
+
+   if (val & FAN_LED_GREEN)
       cpld->green_led |= (1 << fan_id);
    else
       cpld->green_led &= ~(1 << fan_id);
 
-   if (val & 0x2)
+   if (val & FAN_LED_RED)
       cpld->red_led |= (1 << fan_id);
    else
       cpld->red_led &= ~(1 << fan_id);
@@ -470,6 +480,53 @@ static s32 cpld_write_fan_led(struct cpld_data *cpld, u8 fan_id, u8 val)
    err = cpld_write_byte(cpld, FAN_RED_LED_REG, ~cpld->red_led);
 
    return err;
+}
+
+static int brightness_set(struct led_classdev *led_cdev, u8 val)
+{
+   struct cpld_fan_data *fan = container_of(led_cdev, struct cpld_fan_data,
+                                            cdev);
+   struct cpld_data *data = dev_get_drvdata(led_cdev->dev->parent);
+
+   return cpld_write_fan_led(data, fan->index, val);
+}
+
+static int brightness_get(struct led_classdev *led_cdev)
+{
+   struct cpld_fan_data *fan = container_of(led_cdev, struct cpld_fan_data,
+                                            cdev);
+   struct cpld_data *data = dev_get_drvdata(led_cdev->dev->parent);
+   int err;
+   u8 val;
+
+   err = cpld_read_fan_led(data, fan->index, &val);
+   if (err)
+      return err;
+
+   return val;
+}
+
+static int led_init(struct cpld_fan_data *fan, struct i2c_client *client,
+                     int fan_index)
+{
+   fan->index = fan_index;
+   fan->cdev.brightness_set = brightness_set;
+   fan->cdev.brightness_get = brightness_get;
+   scnprintf(fan->led_name, LED_NAME_MAX_SZ, "fan%d", fan->index + 1);
+   fan->cdev.name = fan->led_name;
+
+   return led_classdev_register(&client->dev, &fan->cdev);
+}
+
+static void cpld_leds_unregister(struct cpld_data *cpld, int num_leds)
+{
+   int i = 0;
+   struct cpld_fan_data *fan;
+
+   for (i = 0; i < num_leds; i++) {
+      fan = fan_from_cpld(cpld, i);
+      led_classdev_unregister(&fan->cdev);
+   }
 }
 
 static ssize_t cpld_fan_pwm_show(struct device *dev, struct device_attribute *da,
@@ -773,6 +830,11 @@ static int cpld_init(struct cpld_data *cpld)
          cpld_read_fan_id(cpld, i);
          cpld_read_fan_tach(cpld, i);
          cpld_read_fan_pwm(cpld, i);
+         err = led_init(fan, cpld->client, i);
+         if (err) {
+            cpld_leds_unregister(cpld, i);
+            return err;
+         }
       }
    }
 
@@ -807,9 +869,8 @@ static int cpld_probe(struct i2c_client *client,
    }
 
    cpld = devm_kzalloc(dev, sizeof(struct cpld_data), GFP_KERNEL);
-   if (!cpld) {
+   if (!cpld)
       return -ENOMEM;
-   }
 
    i2c_set_clientdata(client, cpld);
    cpld->client = client;
@@ -824,9 +885,8 @@ static int cpld_probe(struct i2c_client *client,
 
    hwmon_dev = devm_hwmon_device_register_with_groups(dev, client->name,
                                                       cpld, cpld->groups);
-   if (IS_ERR(hwmon_dev)) {
+   if (IS_ERR(hwmon_dev))
       return PTR_ERR(hwmon_dev);
-   }
 
    cpld->hwmon_dev = hwmon_dev;
 
@@ -844,6 +904,8 @@ static int cpld_remove(struct i2c_client *client)
    mutex_lock(&cpld->lock);
    cancel_delayed_work_sync(&cpld->dwork);
    mutex_unlock(&cpld->lock);
+
+   cpld_leds_unregister(cpld, cpld->info->fan_count);
 
    return 0;
 }
