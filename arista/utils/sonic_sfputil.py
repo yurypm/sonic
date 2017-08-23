@@ -28,9 +28,12 @@ def getSfpUtil():
         def qsfp_ports(self):
             return inventory.qsfpRange
 
-        @property
-        def sfp_ports(self):
-            return inventory.sfpRange
+        # XXX: defining the sfp_ports property currently can't be done as
+        #      it affect the code logic of the sfputil tool by preventing
+        #      the qsfp ports from being detected
+        #@property
+        #def sfp_ports(self):
+        #    return inventory.sfpRange
 
         @property
         def port_to_eeprom_mapping(self):
