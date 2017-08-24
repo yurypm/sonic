@@ -24,8 +24,10 @@
 #include <linux/leds.h>
 #include "gpio-kversfix.h"
 
-#define NUM_FANS 4
 #define DRIVER_NAME "sb800-fans"
+
+#define LED_NAME_MAX_SZ 20
+#define NUM_FANS 4
 
 #define SB800_BASE 0xfed80000
 #define SB800_GPIO_BASE (SB800_BASE + 0x0100)
@@ -49,10 +51,10 @@
 #define FAN3_GREEN_LED_ADDR 218
 #define FAN4_GREEN_LED_ADDR 225
 
-#define OFF 0
-#define RED 1
-#define YELLOW 2
-#define GREEN 3
+#define FAN_LED_OFF 0
+#define FAN_LED_GREEN 1
+#define FAN_LED_RED 2
+#define FAN_LED_YELLOW 3
 
 #define LED_ON_OFF_REG_OFFSET (1 << 6)
 #define LED_DIR_REG_OFFSET (1 << 5)
@@ -72,8 +74,15 @@
 #define FAN_PWM_BASE_ADDR 3
 #define FAN_PWM_ADDR_OFFSET 0x10
 
+struct raven_led {
+   char name[LED_NAME_MAX_SZ];
+   struct led_classdev cdev;
+   int fan_index;
+};
+
 struct raven_pdata {
    struct device *hwmon_dev;
+   struct raven_led leds[NUM_FANS];
    u8 *gpio_base;
    u8 *pm2_base;
 };
@@ -114,64 +123,69 @@ static ssize_t show_fan_id(struct device *dev, struct device_attribute *attr,
   return scnprintf(buf, 12, "%u %u %u\n", id_vals[2], id_vals[1], id_vals[0]);
 }
 
+static int read_led(struct raven_pdata *pdata, int fan_id, int *value)
+{
+   unsigned long const green_led_addr = green_led_addrs[fan_id];
+   u8 *reg_g = pdata->gpio_base + green_led_addr;
+   u8 *reg_r = reg_g + GREEN_RED_LED_ADDR_OFFSET;
+   u32 val_g = ioread8(reg_g);
+   u32 val_r = ioread8(reg_r);
+
+   *value = FAN_LED_OFF;
+
+   if (!(val_g & LED_ON_OFF_REG_OFFSET) && (val_r & LED_ON_OFF_REG_OFFSET)) {
+      *value = FAN_LED_GREEN;
+   }
+   else if ((val_g & LED_ON_OFF_REG_OFFSET) && !(val_r & LED_ON_OFF_REG_OFFSET)) {
+      *value = FAN_LED_RED;
+   }
+   else if (!(val_g & LED_ON_OFF_REG_OFFSET) && !(val_r & LED_ON_OFF_REG_OFFSET)) {
+      *value = FAN_LED_YELLOW;
+   }
+
+   return 0;
+}
+
 static ssize_t show_led(struct device *dev, struct device_attribute *attr,
                         char *buf)
 {
    struct raven_pdata *pdata = dev_get_drvdata(dev->parent);
    struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
-   u32 fan_id = sensor_attr->index - 1;
-   unsigned long const green_led_addr = green_led_addrs[fan_id];
-   u8 *reg_g = pdata->gpio_base + green_led_addr;
-   u8 *reg_r = reg_g + GREEN_RED_LED_ADDR_OFFSET;
-   u32 val_g = ioread8(reg_g);
-   u32 val_r = ioread8(reg_r);
+   int err;
+   int color_index;
 
-   int color_index = OFF;
+   err = read_led(pdata, sensor_attr->index - 1, &color_index);
+   if (err)
+      return err;
 
-   if (!(val_g & LED_ON_OFF_REG_OFFSET) && (val_r & LED_ON_OFF_REG_OFFSET)) {
-      color_index = GREEN;
-   }
-   else if ((val_g & LED_ON_OFF_REG_OFFSET) && !(val_r & LED_ON_OFF_REG_OFFSET)) {
-      color_index = RED;
-   }
-   else if (!(val_g & LED_ON_OFF_REG_OFFSET) && !(val_r & LED_ON_OFF_REG_OFFSET)) {
-      color_index = YELLOW;
-   }
    return scnprintf(buf, 3, "%u\n", color_index);
 }
 
-static ssize_t store_led(struct device * dev, struct device_attribute * attr,
-                         const char * buf, size_t count)
+static int write_led(struct raven_pdata *pdata, int val, int index)
 {
-   struct raven_pdata *pdata = dev_get_drvdata(dev->parent);
-   struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
-   u32 fan_id = sensor_attr->index - 1;
-   int ret = 0;
-   unsigned long value;
-   unsigned long const green_led_addr = green_led_addrs[fan_id];
+   unsigned long const green_led_addr = green_led_addrs[index];
    u8 *reg_g = pdata->gpio_base + green_led_addr;
    u8 *reg_r = reg_g + GREEN_RED_LED_ADDR_OFFSET;
    u32 val_g = ioread8(reg_g);
    u32 val_r = ioread8(reg_r);
 
-   ret = kstrtoul(buf, 10, &value);
-   if (ret) {
-      return ret;
-   }
+   if (val > 3)
+      return -EINVAL;
+
    // Enable output
    val_g &= ~LED_DIR_REG_OFFSET;
    val_r &= ~LED_DIR_REG_OFFSET;
 
-   switch ((int)value) {
-   case OFF:
+   switch (val) {
+   case FAN_LED_OFF:
       val_g |= LED_ON_OFF_REG_OFFSET;
       val_r |= LED_ON_OFF_REG_OFFSET;
       break;
-   case RED:
+   case FAN_LED_RED:
       val_r &= ~LED_ON_OFF_REG_OFFSET;
       val_g |= LED_ON_OFF_REG_OFFSET;
       break;
-   case YELLOW:
+   case FAN_LED_YELLOW:
       val_g &= ~LED_ON_OFF_REG_OFFSET;
       val_r &= ~LED_ON_OFF_REG_OFFSET;
       break;
@@ -182,7 +196,89 @@ static ssize_t store_led(struct device * dev, struct device_attribute * attr,
    }
    iowrite8(val_g, reg_g);
    iowrite8(val_r, reg_r);
+
+   return 0;
+}
+
+static ssize_t store_led(struct device * dev, struct device_attribute * attr,
+                         const char * buf, size_t count)
+{
+   unsigned long value;
+   int err;
+   struct raven_pdata *pdata = dev_get_drvdata(dev->parent);
+   struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
+   u32 fan_id = sensor_attr->index - 1;
+
+   err = kstrtoul(buf, 10, &value);
+   if (err) {
+      return err;
+   }
+
+   err = write_led(pdata, value, sensor_attr->index - 1);
+   if (err)
+      return err;
+
    return count;
+}
+
+static int brightness_set(struct led_classdev *led_cdev, int value)
+{
+   int err;
+   struct raven_led *pled = container_of(led_cdev, struct raven_led,
+                                         cdev);
+   struct raven_pdata *pdata = dev_get_drvdata(led_cdev->dev->parent);
+
+   err = write_led(pdata, value, pled->fan_index);
+   if (err)
+      return err;
+
+   return 0;
+}
+
+static int brightness_get(struct led_classdev *led_cdev)
+{
+   int err;
+   struct raven_led *pled = container_of(led_cdev, struct raven_led,
+                                         cdev);
+   struct raven_pdata *pdata = dev_get_drvdata(led_cdev->dev->parent);
+   int value;
+
+   err = read_led(pdata, pled->fan_index, &value);
+   if (err)
+      return err;
+
+   return value;
+}
+
+static void leds_unregister(struct raven_pdata *pdata, int num_leds)
+{
+    int i;
+
+    for (i = 0; i < num_leds; i++)
+        led_classdev_unregister(&pdata->leds[i].cdev);
+}
+
+static int leds_register(struct device* dev, struct raven_pdata *pdata)
+{
+   int i;
+   int err;
+   struct raven_led *led;
+
+   for (i = 0; i < NUM_FANS; i++) {
+      led = &pdata->leds[i];
+      led->fan_index = i;
+      led->cdev.brightness_set = brightness_set;
+      led->cdev.brightness_get = brightness_get;
+      scnprintf(led->name, LED_NAME_MAX_SZ, "fan%d", led->fan_index + 1);
+      led->cdev.name = led->name;
+      err = led_classdev_register(dev, &led->cdev);
+      if (err) {
+         leds_unregister(pdata, i);
+         return err;
+      }
+   }
+
+   return 0;
 }
 
 static ssize_t show_fan_input(struct device *dev, struct device_attribute *attr,
@@ -300,7 +396,7 @@ static void set_led_init_state(struct device * dev)
       val_r = ioread8(reg_r);
       val_g &= ~LED_DIR_REG_OFFSET;
       val_r &= ~LED_DIR_REG_OFFSET;
-      val_g |= LED_ON_OFF_REG_OFFSET;
+      val_g &= ~LED_ON_OFF_REG_OFFSET; // initialize leds to green
       val_r |= LED_ON_OFF_REG_OFFSET;
       iowrite8(val_g, reg_g);
       iowrite8(val_r, reg_r);
@@ -325,9 +421,26 @@ static void set_fan_init_state(struct device * dev)
    }
 }
 
+static int sb_fan_remove(struct platform_device *pdev)
+{
+   int err = 0;
+   int i;
+   struct raven_pdata *pdata = platform_get_drvdata(pdev);
+
+   leds_unregister(pdata, NUM_FANS);
+
+   iounmap(pdata->gpio_base);
+   iounmap(pdata->pm2_base);
+   release_mem_region(SB800_PM2_BASE, SB800_PM2_SIZE);
+   release_mem_region(SB800_GPIO_BASE, SB800_GPIO_SIZE);
+   hwmon_device_unregister(pdata->hwmon_dev);
+   return err;
+}
+
 static s32 sb_fan_probe(struct platform_device *pdev)
 {
    int ret = 0;
+   int err;
    struct raven_pdata *pdata = devm_kzalloc(&pdev->dev, sizeof(struct raven_pdata),
                                             GFP_KERNEL);
 
@@ -356,6 +469,12 @@ static s32 sb_fan_probe(struct platform_device *pdev)
    set_led_init_state(&pdev->dev);
    set_fan_init_state(&pdev->dev);
 
+   err = leds_register(&pdev->dev, pdata);
+   if (err) {
+      ret = err;
+      goto fail_hwmon_register;
+   }
+
    return ret;
 
 fail_hwmon_register:
@@ -366,18 +485,6 @@ fail_request_gpio_region:
    iounmap(pdata->pm2_base);
 fail_request_pm_region:
    return ret;
-}
-
-static int sb_fan_remove(struct platform_device *pdev)
-{
-   int err = 0;
-   struct raven_pdata *pdata = platform_get_drvdata(pdev);
-   iounmap(pdata->gpio_base);
-   iounmap(pdata->pm2_base);
-   release_mem_region(SB800_PM2_BASE, SB800_PM2_SIZE);
-   release_mem_region(SB800_GPIO_BASE, SB800_GPIO_SIZE);
-   hwmon_device_unregister(pdata->hwmon_dev);
-   return err;
 }
 
 static int __init sb_fan_init(void)

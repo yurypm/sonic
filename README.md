@@ -102,23 +102,15 @@ qsfp:
   2 => yellow
 
 fan:
-  1 => red
-  2 => yellow
-  3 => green
+  1 => green
+  2 => red
+  3 => yellow
 ```
 
 ## Fan controls
 
 Fan controls can be found in `/sys/kernel/fan_driver`. Each fan has an
 `fan<N>_input` and a `pwm<N>` file for reading and setting the fan speed.
-
-```
-fan:
-  0 => off
-  1 => green
-  2 => red
-  3 => yellow
-```
 
 ## Temperature sensors
 
