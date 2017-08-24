@@ -19,7 +19,7 @@ class Upperlake(Platform):
 
       self.addDriver(KernelDriver, 'crow-fan-driver')
 
-      scd = Scd(PciAddr(bus=0x02))
+      scd = Scd(PciAddr(bus=0x02), newDriver=True)
       self.addComponent(scd)
 
       scd.addComponents([
@@ -47,8 +47,7 @@ class Upperlake(Platform):
          (0x6080, 'psu2'),
          (0x6090, 'beacon'),
       ])
-      self.inventory.addStatusLeds(['status', 'fan_status', 'psu1',
-         'psu2'])
+      self.inventory.addStatusLeds(['status', 'fan_status', 'psu1', 'psu2'])
 
       scd.addResets([
          ResetGpio(0x4000, 1, False, 'switch_chip_reset'),
@@ -75,14 +74,14 @@ class Upperlake(Platform):
             self.inventory.addXcvrLed(xcvrId, name)
             addr += 0x10
 
-      # addr = 0x5010
-      # bus = 10
-      # for xcvrId in self.sfpRange:
-      #   scd.addSfp(addr, xcvrId)
-      #   scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
-      #   self.inventory.addSfp(xcvrId, bus)
-      #   addr += 0x10
-      #   bus += 1
+      addr = 0x5010
+      bus = 10
+      for xcvrId in self.sfpRange:
+         xcvr = scd.addSfp(addr, xcvrId, bus)
+         self.inventory.addXcvr(xcvr)
+         scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+         addr += 0x10
+         bus += 1
 
       addr = 0x5050
       bus = 18
