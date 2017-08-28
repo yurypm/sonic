@@ -86,7 +86,7 @@ class Component(object):
       if self.drivers:
          self._dumpDrivers(depth, prefix)
       print('%s%scomponents:' % (spacer, prefix))
-      for component in self.components.values():
+      for component in flatten(self.components.values()):
          component.dump(depth + 1)
 
    def dump(self, depth=0, prefix=' - '):

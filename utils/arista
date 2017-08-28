@@ -15,16 +15,15 @@ from arista.core.component import Priority
 
 lock_file = '/var/lock/arista.lock'
 
-def setupInBackground(platform):
+def forkForLateInitialization(platform):
       try:
          pid = os.fork()
       except OSError:
          logging.warn('fork failed, setting up background drivers normally')
-         platform.setup(Priority.BACKGROUND)
-         return
-      if pid > 0: # parent returned from fork
-         os._exit(0)
-      platform.setup(Priority.BACKGROUND)
+      else:
+         if pid > 0:
+            logging.debug('initializing slow drivers in child %d', pid)
+            os._exit(0)
 
 def doSetup(args, platform):
    if args.debug:
@@ -34,16 +33,20 @@ def doSetup(args, platform):
       logging.debug('setting up critical drivers')
       platform.setup(Priority.DEFAULT)
 
+      # NOTE: This assumes that none of the resetable devices are
+      #       initialized in background.
+      #       This should stay true in the future.
+      if args.reset:
+         logging.debug('taking devices out of reset')
+         platform.resetOut()
+
       if args.background:
          logging.debug('forking and setting up slow drivers in background')
-         setupInBackground(platform)
+         forkForLateInitialization(platform)
       else:
-         logging.debug('setting up background drivers normally')
-         platform.setup(Priority.BACKGROUND)
+         logging.debug('setting up slow drivers normally')
 
-   if args.reset:
-      logging.debug('taking devices out of reset')
-      platform.resetOut()
+      platform.setup(Priority.BACKGROUND)
 
 def doClean(args, platform):
    if args.reset:
