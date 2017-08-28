@@ -6,8 +6,8 @@ ConditionKernelCommandLine=Aboot
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/arista setup --reset
-ExecStop=/usr/bin/arista clean
+ExecStart=/usr/bin/arista -l /var/log/arista.log setup --reset --background
+ExecStop=/usr/bin/arista -l /var/log/arista.log clean
 RemainAfterExit=yes
 
 [Install]

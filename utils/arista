@@ -1,9 +1,10 @@
 #!/usr/bin/env python2
 
-from __future__ import print_function
+from __future__ import print_function, with_statement
 
 import logging
 import argparse
+import tempfile
 import time
 import sys
 import os
@@ -14,6 +15,42 @@ from arista.core.platform import getPlatform, getSysEeprom, getPlatforms
 from arista.core.component import Priority
 
 lock_file = '/var/lock/arista.lock'
+
+def checkRootPermissions():
+   if utils.inSimulation():
+      return
+
+   if os.geteuid() != 0:
+      log.error('You must be root to use this feature')
+      sys.exit(1)
+
+def setupLogging(verbose=False, logfile=None):
+   loglevel = logging.DEBUG if verbose else logging.INFO
+   dateFmt = '%Y-%m-%d %H:%M:%S'
+
+   log = logging.getLogger()
+   log.setLevel(logging.DEBUG)
+
+   logOut = logging.StreamHandler(sys.stdout)
+   logOut.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+   logOut.setLevel(loglevel)
+   log.addHandler(logOut)
+
+   if logfile:
+      logFile = logging.FileHandler(logfile)
+      logFile.setFormatter(logging.Formatter(
+            '%(asctime)s.%(msecs)03d %(levelname)s: %(message)s', datefmt=dateFmt))
+      log.addHandler(logFile)
+
+def setupSimulation():
+   global lock_file, log_file
+
+   utils.simulation = True
+   assert utils.inSimulation()
+
+   logging.info('Running in simulation mode')
+   lock_file = tempfile.mktemp(prefix='arista-', suffix='.lock')
+   log_file = tempfile.mktemp(prefix='arista-', suffix='.log')
 
 def forkForLateInitialization(platform):
       try:
@@ -26,6 +63,8 @@ def forkForLateInitialization(platform):
             os._exit(0)
 
 def doSetup(args, platform):
+   checkRootPermissions()
+
    if args.debug:
       utils.debug = True
 
@@ -49,6 +88,8 @@ def doSetup(args, platform):
       platform.setup(Priority.BACKGROUND)
 
 def doClean(args, platform):
+   checkRootPermissions()
+
    if args.reset:
       logging.debug('putting devices in reset')
       platform.resetIn()
@@ -132,14 +173,10 @@ def parseArgs():
 def main():
    args = parseArgs()
 
-   if args.simulation:
-      utils.simulation = True
+   setupLogging(args.verbose, args.logfile)
 
-   loglevel = logging.DEBUG if args.verbose else logging.INFO
-   logging.basicConfig(format='%(levelname)s: %(message)s', level=loglevel,
-                       filename=args.logfile)
-   if utils.inSimulation():
-      logging.info('Running in simulation mode')
+   if args.simulation:
+      setupSimulation()
 
    logging.debug(args)
 
