@@ -482,16 +482,17 @@ static s32 cpld_write_fan_led(struct cpld_data *cpld, u8 fan_id, u8 val)
    return err;
 }
 
-static int brightness_set(struct led_classdev *led_cdev, u8 val)
+static void brightness_set(struct led_classdev *led_cdev,
+                           enum led_brightness val)
 {
    struct cpld_fan_data *fan = container_of(led_cdev, struct cpld_fan_data,
                                             cdev);
    struct cpld_data *data = dev_get_drvdata(led_cdev->dev->parent);
 
-   return cpld_write_fan_led(data, fan->index, val);
+   cpld_write_fan_led(data, fan->index, val);
 }
 
-static int brightness_get(struct led_classdev *led_cdev)
+static enum led_brightness brightness_get(struct led_classdev *led_cdev)
 {
    struct cpld_fan_data *fan = container_of(led_cdev, struct cpld_fan_data,
                                             cdev);
@@ -501,13 +502,13 @@ static int brightness_get(struct led_classdev *led_cdev)
 
    err = cpld_read_fan_led(data, fan->index, &val);
    if (err)
-      return err;
+      return 0;
 
    return val;
 }
 
 static int led_init(struct cpld_fan_data *fan, struct i2c_client *client,
-                     int fan_index)
+                    int fan_index)
 {
    fan->index = fan_index;
    fan->cdev.brightness_set = brightness_set;

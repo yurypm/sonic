@@ -123,7 +123,7 @@ static ssize_t show_fan_id(struct device *dev, struct device_attribute *attr,
   return scnprintf(buf, 12, "%u %u %u\n", id_vals[2], id_vals[1], id_vals[0]);
 }
 
-static int read_led(struct raven_pdata *pdata, int fan_id, int *value)
+static int read_led(struct raven_pdata *pdata, int fan_id, u8 *value)
 {
    unsigned long const green_led_addr = green_led_addrs[fan_id];
    u8 *reg_g = pdata->gpio_base + green_led_addr;
@@ -152,16 +152,16 @@ static ssize_t show_led(struct device *dev, struct device_attribute *attr,
    struct raven_pdata *pdata = dev_get_drvdata(dev->parent);
    struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
    int err;
-   int color_index;
+   u8 color;
 
-   err = read_led(pdata, sensor_attr->index - 1, &color_index);
+   err = read_led(pdata, sensor_attr->index - 1, &color);
    if (err)
       return err;
 
-   return scnprintf(buf, 3, "%u\n", color_index);
+   return scnprintf(buf, 16, "%u\n", color);
 }
 
-static int write_led(struct raven_pdata *pdata, int val, int index)
+static int write_led(struct raven_pdata *pdata, u8 val, int index)
 {
    unsigned long const green_led_addr = green_led_addrs[index];
    u8 *reg_g = pdata->gpio_base + green_led_addr;
@@ -214,38 +214,34 @@ static ssize_t store_led(struct device * dev, struct device_attribute * attr,
       return err;
    }
 
-   err = write_led(pdata, value, sensor_attr->index - 1);
+   err = write_led(pdata, value, fan_id);
    if (err)
       return err;
 
    return count;
 }
 
-static int brightness_set(struct led_classdev *led_cdev, int value)
+static void brightness_set(struct led_classdev *led_cdev,
+                           enum led_brightness value)
 {
-   int err;
    struct raven_led *pled = container_of(led_cdev, struct raven_led,
                                          cdev);
    struct raven_pdata *pdata = dev_get_drvdata(led_cdev->dev->parent);
 
-   err = write_led(pdata, value, pled->fan_index);
-   if (err)
-      return err;
-
-   return 0;
+   write_led(pdata, value, pled->fan_index);
 }
 
-static int brightness_get(struct led_classdev *led_cdev)
+static enum led_brightness brightness_get(struct led_classdev *led_cdev)
 {
    int err;
    struct raven_led *pled = container_of(led_cdev, struct raven_led,
                                          cdev);
    struct raven_pdata *pdata = dev_get_drvdata(led_cdev->dev->parent);
-   int value;
+   u8 value;
 
    err = read_led(pdata, pled->fan_index, &value);
    if (err)
-      return err;
+      return 0;
 
    return value;
 }
@@ -424,7 +420,6 @@ static void set_fan_init_state(struct device * dev)
 static int sb_fan_remove(struct platform_device *pdev)
 {
    int err = 0;
-   int i;
    struct raven_pdata *pdata = platform_get_drvdata(pdev);
 
    leds_unregister(pdata, NUM_FANS);

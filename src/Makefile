@@ -1,3 +1,5 @@
+ccflags-y := -Werror
+
 obj-m += scd.o
 obj-m += scd-hwmon.o
 obj-m += sonic-support-driver.o

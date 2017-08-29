@@ -165,7 +165,7 @@ static s32 read_led_color_buf(struct device *dev, char *buf, int index)
     return sprintf(buf, "%d\n", val);
 }
 
-static s32 write_led_color(struct device *dev, int value, int index)
+static s32 write_led_color(struct device *dev, u8 value, int index)
 {
     s32 status;
     u8 red_value;
@@ -390,15 +390,16 @@ static struct attribute *fan_attrs[] = {
 
 ATTRIBUTE_GROUPS(fan);
 
-static int brightness_set(struct led_classdev *led_cdev, int value)
+static void brightness_set(struct led_classdev *led_cdev,
+                           enum led_brightness value)
 {
     struct crow_led *pled = container_of(led_cdev, struct crow_led, cdev);
     struct device *dev = led_cdev->dev->parent;
 
-    return write_led_color(dev, value, pled->fan_index);
+    write_led_color(dev, value, pled->fan_index);
 }
 
-static int brightness_get(struct led_classdev *led_cdev)
+static enum led_brightness brightness_get(struct led_classdev *led_cdev)
 {
     struct crow_led *pled = container_of(led_cdev, struct crow_led, cdev);
     struct device *dev = led_cdev->dev->parent;
@@ -407,7 +408,7 @@ static int brightness_get(struct led_classdev *led_cdev)
 
     err =  read_led_color(dev, pled->fan_index, &val);
     if (err)
-        return err;
+        return 0;
 
     return val;
 }
