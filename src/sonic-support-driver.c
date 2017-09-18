@@ -1022,7 +1022,7 @@ static ssize_t read_u32_array(u32 array[], char *buf)
    int i;
    sonic_lock();
    for (i = 1; i < array[0] + 1; i++) {
-      len += scnprintf(buf + len, 12, "0x%08x\n", array[i]);
+      len += scnprintf(buf + len, PAGE_SIZE - len, "0x%08x\n", array[i]);
    }
    sonic_unlock();
    return len;
@@ -1048,7 +1048,7 @@ static ssize_t read_str_array(char array[][NAME_LENGTH], u32 arraylen, char *buf
    int i;
    sonic_lock();
    for (i = 0; i < arraylen; i++) {
-      len += scnprintf(buf + len, sizeof(array[i]), "%s\n", array[i]);
+      len += scnprintf(buf + len, PAGE_SIZE - len, "%s\n", array[i]);
    }
    sonic_unlock();
    return len;
