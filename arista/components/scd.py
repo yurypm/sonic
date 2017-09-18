@@ -13,8 +13,8 @@ from ..core.utils import sysfsFmtHex, sysfsFmtDec, sysfsFmtStr, simulateWith, \
 from common import PciComponent, KernelDriver, PciKernelDriver
 
 class ScdKernelXcvr(Xcvr):
-   def __init__(self, portNum, xcvrType, bus, driver):
-      Xcvr.__init__(self, portNum, xcvrType, bus)
+   def __init__(self, portNum, xcvrType, eepromAddr, bus, driver):
+      Xcvr.__init__(self, portNum, xcvrType, eepromAddr, bus)
       self.driver = driver
       self.typeStr = 'qsfp' if xcvrType == Xcvr.QSFP else 'sfp'
       self.prefix = '%s%d_' % (self.typeStr, portNum)
@@ -360,7 +360,7 @@ class Scd(PciComponent):
    def addGpios(self, gpios):
       self.gpios += gpios
 
-   def addQsfp(self, addr, xcvrId, bus):
+   def addQsfp(self, addr, xcvrId, bus, eepromAddr=0x50):
       self.qsfps[addr] = {
          'id': xcvrId,
          'bus': bus,
@@ -374,9 +374,9 @@ class Scd(PciComponent):
             Gpio(8, False, True),
          ]
       }
-      return self.xcvrCls(xcvrId, Xcvr.QSFP, bus, self.drivers[1])
+      return self.xcvrCls(xcvrId, Xcvr.QSFP, eepromAddr, bus, self.drivers[1])
 
-   def addSfp(self, addr, xcvrId, bus):
+   def addSfp(self, addr, xcvrId, bus, eepromAddr=0x50):
       self.sfps[addr] = {
          'id': xcvrId,
          'bus': bus,
@@ -392,7 +392,7 @@ class Scd(PciComponent):
             Gpio(8, False, False),
          ]
       }
-      return self.xcvrCls(xcvrId, Xcvr.SFP, bus, self.drivers[1])
+      return self.xcvrCls(xcvrId, Xcvr.SFP, eepromAddr, bus, self.drivers[1])
 
    def allGpios(self):
       def zipXcvr(xcvrType, gpio_names, entries):

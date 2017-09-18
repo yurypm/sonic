@@ -91,7 +91,8 @@ class Clearlake(Platform):
       for xcvrId in self.allQsfps:
          xcvr = scd.addQsfp(addr, xcvrId, bus)
          self.inventory.addXcvr(xcvr)
-         scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+         scd.addComponent(I2cKernelComponent(
+            I2cAddr(bus, xcvr.eepromAddr), 'sff8436'))
          addr += 0x10
          bus += 1
 
@@ -100,7 +101,8 @@ class Clearlake(Platform):
       for xcvrId in sorted(self.sfpRange):
          xcvr = scd.addSfp(addr, xcvrId, bus)
          self.inventory.addXcvr(xcvr)
-         scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+         scd.addComponent(I2cKernelComponent(
+            I2cAddr(bus, xcvr.eepromAddr), 'sff8436'))
          addr += 0x10
          bus += 1
 

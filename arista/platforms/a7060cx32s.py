@@ -79,7 +79,8 @@ class Upperlake(Platform):
       for xcvrId in self.sfpRange:
          xcvr = scd.addSfp(addr, xcvrId, bus)
          self.inventory.addXcvr(xcvr)
-         scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+         scd.addComponent(I2cKernelComponent(
+            I2cAddr(bus, xcvr.eepromAddr), 'sff8436'))
          addr += 0x10
          bus += 1
 
@@ -88,7 +89,8 @@ class Upperlake(Platform):
       for xcvrId in self.qsfp100gRange:
          xcvr = scd.addQsfp(addr, xcvrId, bus)
          self.inventory.addXcvr(xcvr)
-         scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+         scd.addComponent(I2cKernelComponent(
+            I2cAddr(bus, xcvr.eepromAddr), 'sff8436'))
          addr += 0x10
          bus += 1
 

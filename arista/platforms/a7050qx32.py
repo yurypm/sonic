@@ -85,7 +85,8 @@ class Cloverdale(Platform):
       bus = 10
       for xcvrId in self.allQsfps:
          xcvr = scd.addQsfp(addr, xcvrId, bus)
-         scd.addComponent(I2cKernelComponent(I2cAddr(bus, 0x50), 'sff8436'))
+         scd.addComponent(I2cKernelComponent(
+            I2cAddr(bus, xcvr.eepromAddr), 'sff8436'))
          self.inventory.addXcvr(xcvr)
          addr += 0x10
          bus += 1
