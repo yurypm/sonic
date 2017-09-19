@@ -68,6 +68,7 @@ class Gardena(Platform):
          self.inventory.addXcvr(xcvr)
          scd.addComponent(I2cKernelComponent(
             I2cAddr(bus, xcvr.eepromAddr), 'sff8436'))
+         scd.addBusTweak(bus, xcvr.eepromAddr)
          addr += 0x10
          bus += 1
 
@@ -78,6 +79,7 @@ class Gardena(Platform):
          self.inventory.addXcvr(xcvr)
          scd.addComponent(I2cKernelComponent(
             I2cAddr(bus, xcvr.eepromAddr), 'sff8436'))
+         scd.addBusTweak(bus, xcvr.eepromAddr)
          addr += 0x10
          bus += 1
 

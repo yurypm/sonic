@@ -3,7 +3,7 @@ from __future__ import print_function, with_statement
 import os
 import logging
 
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 
 from ..core.inventory import Xcvr
 from ..core.types import Gpio, ResetGpio, NamedGpio
@@ -93,12 +93,13 @@ class ScdHwmonKernelDriver(PciKernelDriver):
    def writeConfig(self, path, data):
       for filename, value in data.items():
          try:
-            with open(os.path.join(path, filename), 'w') as f:
+            path = os.path.join(path, filename)
+            with open(path, 'w') as f:
                f.write(value)
          except IOError as e:
-            logging.error('%s %s', e.filename, e.strerror)
+            logging.error('%s %s', path, e.strerror)
 
-   def writeObjects(self, components):
+   def writeComponents(self, components, filename):
       PAGE_SIZE = 4096
       data = []
       data_size = 0
@@ -106,14 +107,14 @@ class ScdHwmonKernelDriver(PciKernelDriver):
       for entry in components:
          entry_size = len(entry) + 1
          if entry_size + data_size > PAGE_SIZE:
-            self.writeConfig(self.getSysfsPath(), {'new_object': '\n'.join(data)})
+            self.writeConfig(self.getSysfsPath(), {filename: '\n'.join(data)})
             data_size = 0
             data = []
          data.append(entry)
          data_size += entry_size
 
       if data:
-         self.writeConfig(self.getSysfsPath(), {'new_object': '\n'.join(data)})
+         self.writeConfig(self.getSysfsPath(), {filename: '\n'.join(data)})
 
    def setup(self):
       super(ScdHwmonKernelDriver, self).setup()
@@ -140,7 +141,17 @@ class ScdHwmonKernelDriver(PciKernelDriver):
          data += ["gpio %#x %s %u %d %d" % (gpio.addr, gpio.name, gpio.bit,
                                             int(gpio.ro), int(gpio.activeLow))]
 
-      self.writeObjects(data)
+      tweaks = []
+      for tweak in scd.tweaks:
+         tweaks += ["%#x %#x %#x %#x %#x" % (
+            tweak.bus, tweak.addr, tweak.t, tweak.datr, tweak.datw)]
+
+      logging.debug('creating scd objects')
+      self.writeComponents(data, "new_object")
+
+      if tweaks:
+         logging.debug('applying scd tweaks')
+         self.writeComponents(tweaks, "smbus_tweaks")
 
    def finish(self):
       logging.debug('applying scd configuration')
@@ -315,6 +326,7 @@ class ScdKernelDriver(PciKernelDriver):
       self.reset(False)
 
 class Scd(PciComponent):
+   BusTweak = namedtuple('BusTweak', 'bus, addr, t, datr, datw')
    def __init__(self, addr, newDriver=False):
       super(Scd, self).__init__(addr)
       self.addDriver(KernelDriver, 'scd')
@@ -330,6 +342,10 @@ class Scd(PciComponent):
       self.qsfps = OrderedDict()
       self.sfps = OrderedDict()
       self.leds = []
+      self.tweaks = []
+
+   def addBusTweak(self, bus, addr, t=1, datr=1, datw=3):
+      self.tweaks.append(Scd.BusTweak(bus, addr, t, datr, datw))
 
    def addSmbusMaster(self, addr, id, bus=8):
       self.masters[addr] = {

@@ -59,11 +59,27 @@ struct scd_master {
    int max_retries;
 };
 
+struct bus_params {
+   struct list_head list;
+   u16 addr;
+   u8 t;
+   u8 datw;
+   u8 datr;
+};
+
+const struct bus_params default_bus_params = {
+   .t = 1,
+   .datw = 3,
+   .datr = 3,
+};
+
 struct scd_bus {
    struct scd_master *master;
    struct list_head list;
 
    u32 id;
+   struct list_head params;
+
    struct i2c_adapter adap;
 };
 
@@ -329,11 +345,26 @@ static void smbus_master_reset(struct scd_master *master)
    smbus_master_write_cs(master, cs);
 }
 
+static const struct bus_params *get_bus_params(struct scd_bus *bus, u16 addr) {
+   const struct bus_params *params = &default_bus_params;
+   struct bus_params *params_tmp;
+
+   list_for_each_entry(params_tmp, &bus->params, list) {
+      if (params_tmp->addr == addr) {
+         params = params_tmp;
+         break;
+      }
+   }
+
+   return params;
+}
+
 static s32 scd_smbus_do(struct scd_bus *bus, u16 addr, unsigned short flags,
                         char read_write, u8 command, int size,
                         union i2c_smbus_data *data)
 {
    struct scd_master *master = bus->master;
+   const struct bus_params *params;
    int i;
    union request_reg req;
    union response_reg resp;
@@ -343,9 +374,11 @@ static s32 scd_smbus_do(struct scd_bus *bus, u16 addr, unsigned short flags,
 
    master_lock(master);
 
+   params = get_bus_params(bus, addr);
+
    req.reg = 0;
    req.bs = bus->id;
-   req.t = 1;
+   req.t = params->t;
 
    switch (size) {
    case I2C_SMBUS_QUICK:
@@ -399,7 +432,11 @@ static s32 scd_smbus_do(struct scd_bus *bus, u16 addr, unsigned short flags,
    for (i = 0; i < ss; i++) {
       if (i == ss - 1) {
          req.sp = 1;
-         req.dat = 3;
+         if (read_write == I2C_SMBUS_WRITE) {
+            req.dat = params->datw;
+         } else {
+            req.dat = params->datr;
+         }
       }
       if (i == 1) {
          req.st = 0;
@@ -539,6 +576,7 @@ static int scd_smbus_bus_add(struct scd_master *master, int id)
 
    bus->master = master;
    bus->id = id;
+   INIT_LIST_HEAD(&bus->params);
    bus->adap.owner = THIS_MODULE;
    bus->adap.class = 0;
    bus->adap.algo = &scd_smbus_algorithm;
@@ -565,9 +603,17 @@ static void scd_smbus_master_remove(struct scd_master *master)
 {
    struct scd_bus *bus;
    struct scd_bus *tmp_bus;
+   struct bus_params *params;
+   struct bus_params *tmp_params;
 
    list_for_each_entry_safe(bus, tmp_bus, &master->bus_list, list) {
       i2c_del_adapter(&bus->adap);
+
+      list_for_each_entry_safe(params, tmp_params, &bus->params, list) {
+         list_del(&params->list);
+         kfree(params);
+      }
+
       list_del(&bus->list);
       kfree(bus);
    }
@@ -1245,8 +1291,11 @@ static ssize_t parse_new_object(struct scd_context *ctx, const char *buf,
    return count;
 }
 
-static ssize_t parse_new_objects(struct scd_context *ctx, const char *buf,
-                                 size_t count)
+typedef ssize_t (*line_parser_func)(struct scd_context *ctx, const char *buf,
+   size_t count);
+
+static ssize_t parse_lines(struct scd_context *ctx, const char *buf,
+                           size_t count, line_parser_func parser)
 {
    ssize_t res;
    size_t left = count;
@@ -1260,7 +1309,7 @@ static ssize_t parse_new_objects(struct scd_context *ctx, const char *buf,
       if (!nl)
          nl = buf + left; // points on the \0
 
-      res = parse_new_object(ctx, buf, nl - buf);
+      res = parser(ctx, buf, nl - buf);
       if (res < 0)
          return res;
       left -= res;
@@ -1292,12 +1341,101 @@ static ssize_t new_object(struct device *dev, struct device_attribute *attr,
       scd_unlock(ctx);
       return -EBUSY;
    }
-   res = parse_new_objects(ctx, buf, count);
+   res = parse_lines(ctx, buf, count, parse_new_object);
    scd_unlock(ctx);
    return res;
 }
 
 static DEVICE_ATTR(new_object, S_IRUGO|S_IWUSR|S_IWGRP, 0, new_object);
+
+static struct scd_bus *find_scd_bus(struct scd_context *ctx, u16 bus) {
+   struct scd_master *master;
+   struct scd_bus *scd_bus;
+
+   list_for_each_entry(master, &ctx->master_list, list) {
+      list_for_each_entry(scd_bus, &master->bus_list, list) {
+         if (scd_bus->adap.nr != bus)
+            continue;
+         return scd_bus;
+      }
+   }
+   return NULL;
+}
+
+static ssize_t set_bus_params(struct scd_context *ctx, u16 bus,
+                              struct bus_params *params) {
+   struct bus_params *p;
+   struct scd_bus *scd_bus = find_scd_bus(ctx, bus);
+
+   if (!scd_bus) {
+      scd_err("Cannot find bus %d to add tweak\n", bus);
+      return -EINVAL;
+   }
+
+   list_for_each_entry(p, &scd_bus->params, list) {
+      if (p->addr == params->addr) {
+         p->t = params->t;
+         p->datw = params->datw;
+         p->datr = params->datr;
+         return 0;
+      }
+   }
+
+   p = kzalloc(sizeof(*p), GFP_KERNEL);
+   if (!p) {
+      return -ENOMEM;
+   }
+
+   p->addr = params->addr;
+   p->t = params->t;
+   p->datw = params->datw;
+   p->datr = params->datr;
+   list_add_tail(&p->list, &scd_bus->params);
+   return 0;
+}
+
+static ssize_t parse_smbus_tweak(struct scd_context *ctx, const char *buf,
+                                 size_t count)
+{
+   char buf_copy[count + 1];
+   struct bus_params params;
+   ssize_t err;
+   char *ptr = buf_copy;
+   const char *tmp;
+   u16 bus;
+
+   strncpy(buf_copy, buf, count);
+   buf_copy[count] = 0;
+
+   PARSE_INT_OR_RETURN(&ptr, tmp, u16, &bus);
+   PARSE_INT_OR_RETURN(&ptr, tmp, u16, &params.addr);
+   PARSE_INT_OR_RETURN(&ptr, tmp, u8, &params.t);
+   PARSE_INT_OR_RETURN(&ptr, tmp, u8, &params.datr);
+   PARSE_INT_OR_RETURN(&ptr, tmp, u8, &params.datw);
+
+   err = set_bus_params(ctx, bus, &params);
+   if (err == 0)
+      return count;
+   return err;
+}
+
+static ssize_t smbus_tweaks(struct device *dev, struct device_attribute *attr,
+                            const char *buf, size_t count)
+{
+   ssize_t res;
+   struct scd_context *ctx = get_context_for_dev(dev);
+
+   if (!ctx) {
+      return -ENODEV;
+   }
+
+   scd_lock(ctx);
+   res = parse_lines(ctx, buf, count, parse_smbus_tweak);
+   scd_unlock(ctx);
+   return res;
+}
+
+static DEVICE_ATTR(smbus_tweaks, S_IRUGO|S_IWUSR|S_IWGRP, 0, smbus_tweaks);
 
 static int scd_ext_hwmon_probe(struct pci_dev *pdev)
 {
@@ -1331,6 +1469,12 @@ static int scd_ext_hwmon_probe(struct pci_dev *pdev)
    kobject_get(&pdev->dev.kobj);
    err = sysfs_create_file(&pdev->dev.kobj, &dev_attr_new_object.attr);
    if (err) {
+      goto fail_sysfs;
+   }
+
+   err = sysfs_create_file(&pdev->dev.kobj, &dev_attr_smbus_tweaks.attr);
+   if (err) {
+      sysfs_remove_file(&pdev->dev.kobj, &dev_attr_new_object.attr);
       goto fail_sysfs;
    }
 
@@ -1372,6 +1516,7 @@ static void scd_ext_hwmon_remove(struct pci_dev *pdev)
    kfree(ctx);
 
    sysfs_remove_file(&pdev->dev.kobj, &dev_attr_new_object.attr);
+   sysfs_remove_file(&pdev->dev.kobj, &dev_attr_smbus_tweaks.attr);
    kobject_put(&pdev->dev.kobj);
    put_device(&pdev->dev);
 }
