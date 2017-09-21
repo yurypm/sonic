@@ -23,10 +23,8 @@ class Upperlake(Platform):
       self.addComponent(scd)
 
       scd.addComponents([
-         I2cKernelComponent(I2cAddr(2, 0x1a), 'max6697',
-                            priority=Priority.BACKGROUND),
-         I2cKernelComponent(I2cAddr(3, 0x4c), 'max6658',
-                            priority=Priority.BACKGROUND),
+         I2cKernelComponent(I2cAddr(2, 0x1a), 'max6697'),
+         I2cKernelComponent(I2cAddr(3, 0x4c), 'max6658'),
          I2cKernelComponent(I2cAddr(3, 0x60), 'crow_cpld'),
          I2cKernelComponent(I2cAddr(3, 0x4e), 'pmbus',
                             priority=Priority.BACKGROUND), # ucd90120A
