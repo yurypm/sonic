@@ -1513,10 +1513,11 @@ static void scd_ext_hwmon_remove(struct pci_dev *pdev)
    list_del(&ctx->list);
    module_unlock();
 
-   kfree(ctx);
-
    sysfs_remove_file(&pdev->dev.kobj, &dev_attr_new_object.attr);
    sysfs_remove_file(&pdev->dev.kobj, &dev_attr_smbus_tweaks.attr);
+
+   kfree(ctx);
+
    kobject_put(&pdev->dev.kobj);
    put_device(&pdev->dev);
 }
