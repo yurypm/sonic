@@ -43,6 +43,8 @@
 #define MASTER_DEFAULT_BUS_COUNT 8
 #define MASTER_DEFAULT_MAX_RETRIES 3
 
+#define MAX_CONFIG_LINE_SIZE 100
+
 struct scd_context;
 
 struct scd_master {
@@ -1263,11 +1265,16 @@ static struct {
 static ssize_t parse_new_object(struct scd_context *ctx, const char *buf,
                                 size_t count)
 {
-   char tmp[count + 1];
+   char tmp[MAX_CONFIG_LINE_SIZE];
    char *ptr = tmp;
    char *tok;
    int i = 0;
    ssize_t err;
+
+   if (count >= MAX_CONFIG_LINE_SIZE) {
+      scd_warn("new_object line is too long\n");
+      return -EINVAL;
+   }
 
    strncpy(tmp, buf, count);
    tmp[count] = 0;
@@ -1305,7 +1312,7 @@ static ssize_t parse_lines(struct scd_context *ctx, const char *buf,
       return 0;
 
    while (true) {
-      nl = strnchr(buf, count, '\n');
+      nl = strnchr(buf, left, '\n');
       if (!nl)
          nl = buf + left; // points on the \0
 
@@ -1315,7 +1322,7 @@ static ssize_t parse_lines(struct scd_context *ctx, const char *buf,
       left -= res;
 
       buf = nl;
-      while (*buf == '\n' && left) {
+      while (left && *buf == '\n') {
          buf++;
          left--;
       }
@@ -1397,12 +1404,17 @@ static ssize_t set_bus_params(struct scd_context *ctx, u16 bus,
 static ssize_t parse_smbus_tweak(struct scd_context *ctx, const char *buf,
                                  size_t count)
 {
-   char buf_copy[count + 1];
+   char buf_copy[MAX_CONFIG_LINE_SIZE];
    struct bus_params params;
    ssize_t err;
    char *ptr = buf_copy;
    const char *tmp;
    u16 bus;
+
+   if (count >= MAX_CONFIG_LINE_SIZE) {
+      scd_warn("smbus_tweak line is too long\n");
+      return -EINVAL;
+   }
 
    strncpy(buf_copy, buf, count);
    buf_copy[count] = 0;
