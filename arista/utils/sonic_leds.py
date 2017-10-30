@@ -1,5 +1,3 @@
-import os
-import subprocess
 import re
 from collections import namedtuple, defaultdict
 
@@ -8,15 +6,18 @@ import arista.platforms
 
 try:
    from sonic_led import led_control_base
-except ImportError, e:
-   raise ImportError (str(e) + " - required module not found")
+except ImportError as e:
+   raise ImportError ('%s - required module not found' % str(e))
 
-Port = namedtuple('Port', ['minLane', 'maxLane', 'portNum'])
+Port = namedtuple('Port', ['portNum', 'lanes', 'offset', 'singular'])
 
 def parsePortConfig(portConfigPath):
+   '''
+   Returns a dictionary mapping port name ("Ethernet48") to a named tuple of port
+   number, # of lanes, the offset (0 to 3 from the first lane in qsfp) and the
+   singularity of the lane (if it is in 100G/40G mode)
+   '''
    portMapping = {}
-   portLanes = defaultdict(list)
-   minLanes = {}
 
    with open(portConfigPath) as fp:
       for line in fp:
@@ -25,61 +26,74 @@ def parsePortConfig(portConfigPath):
             continue
 
          fields = line.split()
+         # "portNum" is determined from the fourth column (port), or the first number
+         # in the third column (alias).
+         # "lanes" is determined from the number of lanes in the second column.
+         # "offset" is determined from the second number in the third column (alias).
+         # "singular" is determined by if the alias has a '/' character or not.
+         if len(fields) < 3:
+            continue
          name = fields[0]
-         lanes = map(int, fields[1].split(','))
+         lanes = len(fields[1].split(','))
+         alias = fields[2]
+         aliasRe = re.findall(r'\d+', alias)
          try:
-            portNum = fields[3]
+            portNum = int(fields[3])
          except IndexError:
-            alias = fields[2]
-            portNum = re.findall(r'\d+', alias)[0]
+            portNum = int(aliasRe[0])
+         if len(aliasRe) < 2:
+            offset = 0
+            singular = True
+         else:
+            offset = int(aliasRe[1]) - 1
+            singular = False
 
-         portNum = int(portNum)
-         portMapping[name] = Port(min(lanes), max(lanes), portNum)
-         portLanes[portNum] += lanes
+         portMapping[name] = Port(portNum, lanes, offset, singular)
 
-   for port, lanes in portLanes.items():
-      minLanes[port] = min(lanes)
-
-   return portMapping, minLanes
+   return portMapping
 
 class LedControl(led_control_base.LedControlBase):
-   PORT_CONFIG_PATH = "/usr/share/sonic/hwsku/port_config.ini"
-   LED_SYSFS_PATH = "/sys/class/leds/{0}/brightness"
+   PORT_CONFIG_PATH = '/usr/share/sonic/hwsku/port_config.ini'
+   LED_SYSFS_PATH = '/sys/class/leds/{0}/brightness'
 
    LED_COLOR_OFF = 0
    LED_COLOR_GREEN = 1
    LED_COLOR_YELLOW = 2
 
    def __init__(self):
-      self.portMapping, self.minLanes = parsePortConfig(self.PORT_CONFIG_PATH)
+      self.portMapping = parsePortConfig(self.PORT_CONFIG_PATH)
       self.portSysfsMapping = defaultdict(list)
 
       inventory = platform.getPlatform().getInventory()
       for port, names in inventory.xcvrLeds.items():
          for name in names:
-            self.portSysfsMapping[port].append(
-                     self.LED_SYSFS_PATH.format(name))
+            self.portSysfsMapping[port].append(self.LED_SYSFS_PATH.format(name))
 
-      # set status leds to green initially (Rook led driver does this
-      # automatically)
+      # Set status leds to green initially (Rook led driver does this automatically)
       for statusLed in inventory.statusLeds:
-         with open(self.LED_SYSFS_PATH.format(statusLed), "w") as fp:
-            fp.write("%d" % self.LED_COLOR_GREEN)
+         with open(self.LED_SYSFS_PATH.format(statusLed), 'w') as fp:
+            fp.write('%d' % self.LED_COLOR_GREEN)
 
    def port_link_state_change(self, port, state):
-      if port not in self.portMapping:
+      '''
+      Looks up the port in the port mapping to determine the front number and how
+      many subsequent LEDs should be affected (hardcoded by the port_config)
+      '''
+      p = self.portMapping.get(port)
+      if not p:
          return
-      portNum = self.portMapping[port].portNum
-      minLane = self.minLanes[portNum] # min lane for that port
-      minLed = self.portMapping[port].minLane - minLane
-      maxLed = self.portMapping[port].maxLane - minLane + 1
-
-      for path in self.portSysfsMapping[portNum][minLed:maxLed]:
-         with open(path, "w") as fp:
-            if state == "up":
-               fp.write("%d" % self.LED_COLOR_GREEN)
-            elif state == "down":
-               fp.write("%d" % self.LED_COLOR_OFF)
+      for idx in range(p.lanes):
+         path = self.portSysfsMapping[p.portNum][p.offset + idx]
+         with open(path, 'w') as fp:
+            if state == 'up':
+               if idx == 0:
+                  fp.write('%d' % self.LED_COLOR_GREEN)
+               else:
+                  fp.write('%d' % self.LED_COLOR_YELLOW)
+            elif state == 'down':
+               fp.write('%d' % self.LED_COLOR_OFF)
+         if p.singular:
+            return
 
 def getLedControl():
    return LedControl
