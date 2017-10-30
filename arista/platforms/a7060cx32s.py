@@ -4,7 +4,7 @@ from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
 from ..core.component import Priority
 
-from ..components.common import I2cKernelComponent
+from ..components.common import SwitchChip, I2cKernelComponent
 from ..components.scd import Scd
 
 @registerPlatform(['DCS-7060CX-32S', 'DCS-7060CX-32S-ES'])
@@ -18,6 +18,9 @@ class Upperlake(Platform):
       self.inventory.addPorts(sfps=self.sfpRange, qsfps=self.qsfp100gRange)
 
       self.addDriver(KernelDriver, 'crow-fan-driver')
+
+      switchChip = SwitchChip(PciAddr(bus=0x01))
+      self.addComponent(switchChip)
 
       scd = Scd(PciAddr(bus=0x02), newDriver=True)
       self.addComponent(scd)

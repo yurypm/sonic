@@ -1,8 +1,9 @@
 
 import logging
 import os
+import time
 
-from ..core.component import Component
+from ..core.component import Component, DEFAULT_WAIT_TIMEOUT
 from ..core.driver import KernelDriver
 from ..core.utils import inSimulation
 from ..core.types import PciAddr, I2cAddr
@@ -69,3 +70,22 @@ class I2cKernelDriver(KernelDriver):
 
    def __str__(self):
       return '%s(%s)' % (self.__class__.__name__, self.name)
+
+class SwitchChip(PciComponent):
+   def waitForIt(self, timeout=DEFAULT_WAIT_TIMEOUT):
+      end = time.time() + timeout
+      devPath = os.path.join('/sys/bus/pci/devices/', str(self.addr))
+
+      logging.debug('waiting for switch chip %s', devPath)
+      if inSimulation():
+         return True
+
+      while time.time() < end:
+         if os.path.exists(devPath):
+            logging.debug('switch chip is ready')
+            return True
+         time.sleep(0.1)
+
+      logging.error('timed out waiting for the switch chip %s', devPath)
+      return False
+

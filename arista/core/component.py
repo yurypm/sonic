@@ -4,6 +4,8 @@ from collections import defaultdict
 from driver import Driver
 from utils import flatten
 
+DEFAULT_WAIT_TIMEOUT = 5
+
 class Priority:
    DEFAULT = 0
    BACKGROUND = 1
@@ -70,6 +72,10 @@ class Component(object):
          driver.resetOut()
       for component in flatten(self.components.values()):
          component.resetOut()
+
+   def waitForIt(self, timeout=DEFAULT_WAIT_TIMEOUT):
+      for component in flatten(self.components.values()):
+         component.waitForIt(timeout)
 
    def _dumpDrivers(self, depth, prefix):
       if len(self.drivers) == 1:

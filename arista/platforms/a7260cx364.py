@@ -4,7 +4,7 @@ from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
 from ..core.component import Priority
 
-from ..components.common import I2cKernelComponent
+from ..components.common import SwitchChip, I2cKernelComponent
 from ..components.scd import Scd
 from ..components.ds125br import Ds125Br
 from ..components.ds460 import Ds460
@@ -21,6 +21,9 @@ class Gardena(Platform):
 
       self.addDriver(KernelDriver, 'rook-fan-cpld')
       self.addDriver(KernelDriver, 'rook-led-driver')
+
+      switchChip = SwitchChip(PciAddr(bus=0x07))
+      self.addComponent(switchChip)
 
       scd = Scd(PciAddr(bus=0x06), newDriver=True)
       self.addComponent(scd)

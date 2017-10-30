@@ -60,6 +60,7 @@ def forkForLateInitialization(platform):
       else:
          if pid > 0:
             logging.debug('initializing slow drivers in child %d', pid)
+            platform.waitForIt()
             os._exit(0)
 
 def doSetup(args, platform):
@@ -86,6 +87,9 @@ def doSetup(args, platform):
          logging.debug('setting up slow drivers normally')
 
       platform.setup(Priority.BACKGROUND)
+
+      if not args.background:
+         platform.waitForIt()
 
 def doClean(args, platform):
    checkRootPermissions()
