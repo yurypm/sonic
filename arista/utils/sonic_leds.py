@@ -67,6 +67,8 @@ class LedControl(led_control_base.LedControlBase):
             fp.write("%d" % self.LED_COLOR_GREEN)
 
    def port_link_state_change(self, port, state):
+      if port not in self.portMapping:
+         return
       portNum = self.portMapping[port].portNum
       minLane = self.minLanes[portNum] # min lane for that port
       minLed = self.portMapping[port].minLane - minLane
