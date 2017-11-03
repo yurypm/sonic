@@ -11,7 +11,7 @@ PYTHON         ?= python2
 PACKAGE_NAME   := sonic-platform-arista
 SCRIPT_FILES   := reset
 BIN_FILES      := arista boot-eos
-SERVICE_FILES  := arista-drivers-init.service
+SERVICE_FILES  := arista-drivers.service
 
 KVERSION       ?= $(shell uname -r)
 KERNEL_SRC     ?= /lib/modules/$(KVERSION)/build
