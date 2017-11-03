@@ -1,5 +1,5 @@
-Arista SONiC Support
-=====================
+Arista platform support for SONiC
+=================================
 
 Copyright (C) 2016 Arista Networks, Inc.
 
@@ -16,75 +16,99 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-## Contents of this package
-
- - src/
- > Contains source for a kernels modules that add support for SONic platforms
- - initscripts/
- > Initialisation scripts for platforms
- - patches/
- > Required kernel patches
- - utils/
- > Scripts useful during platform bringup
-
 ## License
 
-All Linux kernel code is licensed under the GPLv2. All other code is
+All linux kernel code is licensed under the GPLv2. All other code is
 licensed under the GPLv3. Please see the LICENSE file for copies of
 both licenses.
 
-All of the code for interacting with Arista hardware is contained in
-the scd kernel module. It has been built and tested against the Linux
-3.18 kernel but should be compatible with the Linux 3.16 kernel as
-well. The initialization script will modprobe the needed modules, navigate
-to the module's device directory in sysfs, and write configuration
-data to the kernel module. Once the init\_trigger file is written with
-a 1, the sonic-support kernel module will finish initializing the kernel
-interfaces for all devices.
+## Purpose
 
+This package contains kernel drivers, a python library and a python binary to
+provide platform support for Arista switches.
+
+The `arista` tool will identify the platform on which it is running and will
+then load and initialise the required kernel drivers. Once initialised, the
+system will expose transceivers, leds, fans, temperature sensors and gpios
+through the sysfs.
+
+## Supported platforms
+
+The following platforms are currently supported,
+
+ - DCS-7050QX-32
+ - DCS-7050QX-32S
+ - DCS-7060CX-32
+ - DCS-7260CX3-64
+
+Some platforms will require some custom kernel patches.
+They are available on the Azure/sonic-linux-kernel repository.
+
+## Usage
+
+This repository contains both a `systemd` and `LSB` init script to properly
+integrate with the system startup and shutdown.
+
+Alternatively the `arista` tool can be used in standalone to load and unload
+the platform support.
+
+```
+   arista --help
+```
+
+Since the python library knows about the current platform, it can provides a
+common and unified implementation of the SONiC plugins.
+Currently supports `eeprom`, `sfputil` and `led_control`.
+
+The python library and tools are python2 and python3 compatible.
 
 ## Drivers
 
-This section describes the kernel modules and their dependancies. The
-init scripts load the modules in the correct order.
+The kernel drivers in this repository have currently been tested against a
+3.16 and 3.18 based kernel image.
 
-### Scd
+### scd-hwmon vs sonic-support-driver
 
-The scd module on the DCS-7050QX-32S can be found in
-`/sys/bus/pci/drivers/scd/0000:04:00.0`
-or
-`/sys/bus/pci/drivers/scd/0000:02:00.0`
-on the DCS-7050QX-32S, DCS-7060CX2-32S and DCS-7060CX-32S platforms
+The `scd-hwmon` is the newer implementation of the scd driver and is used
+for all supported platforms except `DCS-7050QX-32` and `DCS-7050QX-32S` which
+use `sonic-support driver`.
 
-The scd module must be loaded first on all platforms
+When the `scd-hwmon` driver is loaded, the various gpios and resets can be set
+and unset by writing into the sysfs file.
+The meaning of the value `0` or `1` read from or written to is determined by
+the name of the sysfs entry.
 
-### Sonic-support-driver
+```
+cd /sys/module/scd/drivers/pci:scd/<pciAddr>/
+echo 1 > switch_chip_reset
+```
 
-The sonic-support-driver on all platforms can be found in
-`/sonic-support-driver`
-within the directory where the scd is loaded
+When the legacy `sonic-support-driver` is in use, the gpios and resets behave
+according to the gpio subsystem of the kernel. The driver will properly set
+`value` and `active_low`, whereas `direction` must be set to `out` when
+setting the gpio and to `in` when reading it. Read only entries don't have
+a `direction` file.
 
-The sonic-support-driver depends on the scd driver which must
-be loaded first.
-
-### Fan drivers
-
-The DCS-7050QX-32 platform requires the raven-fan-driver to be loaded.
-
-The DCS-7050QX-32S and DCS-7060CX-32S platforms require the
-crow-fan-driver to be loaded.
+```
+cd /sys/module/scd/drivers/pci:scd/<pciAddr>/
+echo out > switch_chip_reset/direction
+echo 1 > switch_chip_reset/value
+echo 0 > switch_chip_reset/value
+```
 
 ## Components
 
-This section describes interacting with various components. All the
-components are initialized in the init script. The following describes
-manual initialization as well as interaction. The examples below
-are for a given platform and may differ across platforms.
+This section describes how to interact with the various components exposed by
+the kernel drivers.
+In order to see them, the platform must be successfully initialized.
+
+The following sections describe how to manually interact with the components.
+Examples shown may differ across platforms but the logic stays the same.
 
 ### LEDs
 
-LED controls can be found in `/sys/class/leds`. The sysfs interface
-for LEDs is not very expressive, so the brightness field is used
+LED entries can be found under `/sys/class/leds`. Since the sysfs interface
+for LEDs is not very expressive, the brightness field is used here
 to toggle between off and different colors. The brightness to LED
 color mappings are as follows (0 maps to off for all LEDs):
 
@@ -107,62 +131,78 @@ fan:
   3 => yellow
 ```
 
-## Fan controls
+Given that this repository is primarily aimed at running on SONiC, an
+implementation of the `led_control` plugin is available under
+`arista.utils.sonic_leds`. It requires access to the `port_config.ini` file to
+translate from `interface name` to `front panel port`.
 
-Fan controls can be found in `/sys/kernel/fan_driver`. Each fan has an
-`fan<N>_input` and a `pwm<N>` file for reading and setting the fan speed.
+### Fans
 
-## Temperature sensors
+Fans are exposed under `/sys/class/hwmon/*` and respect the
+[sysfs-interface](https://www.kernel.org/doc/Documentation/hwmon/sysfs-interface)
+guidelines.
 
-Temperature sensors are controlled by the lm73 and lm90 kernel
-modules. If these were compiled into the kernel then after
-initializing the kernel module they should already be visible in
-`/sys/bus/i2c/drivers/lm73/3-0048` and
-`/sys/bus/i2c/drivers/lm90/2-004c`. If they were compiled as modules,
-then you will need to modprobe lm73 and modprobe lm90 for their sysfs
-entries to show up.
+This repository provides the kernel modules to handle the fans.
 
-## Power supplies
+### Temperature sensors
 
-Power supplies and power controllers can be controlled by the kernel's
-generic pmbus module. Assuming the pmbus module was compiled into the
-kernel, the sysfs entries can be created as follows:
+Temperature sensors are exposed under `/sys/class/hwmon/*` and also respect
+the [sysfs-interface](https://www.kernel.org/doc/Documentation/hwmon/sysfs-interface).
 
-    echo pmbus 0x4e > /sys/bus/i2c/devices/i2c-3/new_device
-    echo pmbus 0x58 > /sys/bus/i2c/devices/i2c-5/new_device
-    echo pmbus 0x58 > /sys/bus/i2c/devices/i2c-6/new_device
-    echo pmbus 0x4e > /sys/bus/i2c/devices/i2c-7/new_device
+They are all managed by linux standard modules like `lm73` and `max6658`.
 
-### EEPROM
+### Power supplies
 
-The EEPOM containing the SKU, serial number, and other information can
-be accessed with the eeprom kernel module. After using modprobe eeprom
-to detect the eeprom, it will show up in sysfs at
-`/sys/bus/i2c/drivers/eeprom/1-0052`.
+Power supplies and power controllers can be managed by the kernel's
+generic `pmbus` module. Assuming the pmbus module was compiled into the
+kernel.
 
-The included prefdl utility can be used to decode the raw output of
-the EEPROM. For example,
+Some power supplies may need kernel patches against the `pmbus` driver.
 
-    bash# cat /sys/bus/i2c/drivers/eeprom/1-0052/eeprom | prefdl -
-    SerialNumber: JAS13011012
-    SKU: DCS-7050QX-32
+### System EEPROM
 
-### QSFPs
+The system eeprom contains platform specific information like the `SKU`, the
+`serial number` and the `base mac address`.
 
-QSFP+ modules are managed by the sff8436 kernel driver. These can be
-instantiated by the init script but can manually be instatiated as:
+The way to read the system eeprom from a platform can differ from one SKU to the
+other.
+The most reliable way to get this information is by issuing `arista syseeprom`
 
-    echo sff8436 0x50 > /sys/bus/i2c/devices/i2c-10/new_device
-    echo sff8436 0x50 > /sys/bus/i2c/devices/i2c-11/new_device
-    echo sff8436 0x50 > /sys/bus/i2c/devices/i2c-12/new_device
-    ...
-    echo sff8436 0x50 > /sys/bus/i2c/devices/i2c-40/new_device
-    echo sff8436 0x50 > /sys/bus/i2c/devices/i2c-41/new_device
+In the case of SONiC the module `arista.utils.sonic_eeprom` provide the plugin
+implementation.
+
+### Transceivers - QSFPs / SFPs
+
+Currently only platforms with QSFP+ and SFP+ ports are supported.
+These transceivers provide 2 kind of information.
+
+#### Pins
+
+The first piece of information is obtained from the transceiver physical pins.
+ - QSFP: present, reset, low power mode, interrupt, module select
+ - SFP: present, rxlos, txfault, txdisable
+
+These knobs are accessible under `/sys/module/scd/drivers/pci:scd/.../`
+The name of the entries follow this naming `<type><id>_<pin>`
+For example `qsfp2_reset` or `sfp66_txdisable`.
+
+See [this section](#scd-hwmon-vs-sonic-support-driver) on how to use them.
+
+#### Eeproms
+
+The second piece of information provided by a transceiver is the content of its
+`eeprom`. It is accessible via `SMBus` at the fixed address `0x50`.
+
+On linux, an unoffical module called `sff_8436_eeprom` can handle such devices.
+The arista initialisation library takes care of loading the module for all the
+transceivers.
+They should then all be available under
+`/sys/module/sff_8436_eeprom/drivers/i2c:sff8436`
 
 After instantiation, the EEPROM information can be read like so:
 
 ```
--bash-4.1# cat /sys/bus/i2c/devices/19-0050/eeprom | hexdump -C
+root@sonic# hexdump -C /sys/bus/i2c/devices/19-0050/eeprom
 00000000  0d 00 02 f0 00 00 00 00  00 00 00 00 00 00 00 00  |................|
 00000010  00 00 00 00 00 00 19 5c  00 00 7f 9c 00 00 00 00  |.......\........|
 00000020  00 00 1f cd 20 2e 26 b8  22 94 00 00 00 00 00 00  |.... .&.".......|
@@ -196,37 +236,15 @@ After instantiation, the EEPROM information can be read like so:
 
 Before being read, the QSFP+ modules must be taken out of reset and
 have their module select signals asserted. This can be done through
-the GPIO interface. GPIOs are exposed in the sysfs directory for the
-scd (they may also be accessed through `/sys/class/gpio`, but named
-aliases are created in the scd directory for convenient access).
-
-For example, after initialization, you could run the following
-commands to ensure QSFP10 is out of reset and has modsel asserted
-before reading it:
-
-    echo out > qsfp10_reset/direction
-    echo 0 > qsfp10_reset/value
-    echo out > qsfp10_modsel
-    echo 1 > qsfp10_value
-
-### SFPs
-
-Initializing the SFP+ is done in the same manner.
-
-    echo sff8436 0x50 > /sys/bus/i2c/devices/i2c-42/new_device
-    ...
-    echo sff8436 0x50 > /sys/bus/i2c/devices/i2c-44/new_device
-    echo sff8436 0x50 > /sys/bus/i2c/devices/i2c-45/new_device
+the GPIO interface.
 
 ### QSFP - SFP multiplexing
 
-In the Arista DCS-7050QX-32S model, the first 4 QSFP and 4 SFP ports are
-multiplexed. To choose between the two use the interface located at
-`pathtoscd/mux_sfp_qsfp`
+On the `DCS-7050QX-32S`, the first QSFP port and the 4 SFP ports are multiplexed.
+To choose between one or the other, write into the sysfs file located under
+`/sys/modules/scd/drivers/pci:scd/.../mux_sfp_qsfp`
 
-### GPIOs
+### GPIOs and resets
 
-All GPIOs have their active\_low values correctly set by the
-initialization script, so for all GPIOs they may be asserted by
-writing a 1 and de-asserted by writing a 0. Read-only GPIOs will not
-have a direction file.
+Most of the GPIOs are exposed by the `scd-hwmon` and the `sonic-support-driver`.
+They should be available under `/sys/module/scd/drivers/pci:scd/.../`.
