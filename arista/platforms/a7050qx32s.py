@@ -4,7 +4,7 @@ from ..core.utils import incrange
 from ..core.types import PciAddr, I2cAddr, Gpio, NamedGpio, ResetGpio
 from ..core.component import Priority
 
-from ..components.common import I2cKernelComponent
+from ..components.common import SwitchChip, I2cKernelComponent
 from ..components.scd import Scd
 from ..components.ds125br import Ds125Br
 
@@ -23,6 +23,9 @@ class Clearlake(Platform):
       self.inventory.addPorts(qsfps=self.allQsfps)
 
       self.addDriver(KernelDriver, 'crow-fan-driver')
+
+      switchChip = SwitchChip(PciAddr(bus=0x01))
+      self.addComponent(switchChip)
 
       scd = Scd(PciAddr(bus=0x02))
       self.addComponent(scd)
