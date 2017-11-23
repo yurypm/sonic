@@ -47,7 +47,12 @@ class Gardena(Platform):
       scd.addGpios([
          NamedGpio(0x5000, 0, True, False, "psu1_present"),
          NamedGpio(0x5000, 1, True, False, "psu2_present"),
+         NamedGpio(0x5000, 8, True, False, "psu1_status"),
+         NamedGpio(0x5000, 9, True, False, "psu2_status"),
+         NamedGpio(0x5000, 10, True, False, "psu1_ac_status"),
+         NamedGpio(0x5000, 11, True, False, "psu2_ac_status"),
       ])
+      self.inventory.addPsus([scd.createPsu(1, True), scd.createPsu(2, True)])
 
       addr = 0x6100
       for xcvrId in self.qsfpRange:

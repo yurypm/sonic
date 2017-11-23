@@ -60,10 +60,11 @@ class Clearlake(Platform):
       scd.addReset(ResetGpio(0x4000, 0, False, 'switch_chip_reset'))
 
       scd.addGpios([
-         NamedGpio(0x5000, 0, True, False, "psu1"),
-         NamedGpio(0x5000, 1, True, False, "psu2"),
+         NamedGpio(0x5000, 0, True, False, "psu1_present"),
+         NamedGpio(0x5000, 1, True, False, "psu2_present"),
          NamedGpio(0x6940, 0, False, False, "mux"), # FIXME: oldSetup order/name
       ])
+      self.inventory.addPsus([scd.createPsu(1, False), scd.createPsu(2, False)])
 
       addr = 0x6100
       for xcvrId in self.qsfp40gAutoRange:

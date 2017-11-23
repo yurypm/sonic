@@ -56,9 +56,10 @@ class Upperlake(Platform):
       ])
 
       scd.addGpios([
-         NamedGpio(0x5000, 0, True, False, "psu1"),
-         NamedGpio(0x5000, 1, True, False, "psu2"),
+         NamedGpio(0x5000, 0, True, False, "psu1_present"),
+         NamedGpio(0x5000, 1, True, False, "psu2_present"),
       ])
+      self.inventory.addPsus([scd.createPsu(1, False), scd.createPsu(2, False)])
 
       addr = 0x6100
       for xcvrId in self.sfpRange:

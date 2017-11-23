@@ -23,6 +23,13 @@ class Xcvr(object):
    def reset(self, value):
       raise NotImplementedError()
 
+class Psu(object):
+   def getPresence(self):
+      raise NotImplementedError()
+
+   def getStatus(self):
+      raise NotImplementedError()
+
 class Inventory(object):
    def __init__(self):
       self.sfpRange = []
@@ -36,6 +43,8 @@ class Inventory(object):
 
       self.xcvrLeds = defaultdict(list)
       self.statusLeds = []
+
+      self.psus = []
 
    def freeze(self):
       # XXX: compute the range and some basic information from the various
@@ -78,6 +87,15 @@ class Inventory(object):
 
    def addStatusLeds(self, names):
       self.statusLeds.extend(names)
+
+   def addPsus(self, psus):
+      self.psus = psus
+
+   def getPsu(self, index):
+      return self.psus[index]
+
+   def getNumPsus(self):
+      return len(self.psus)
 
 
 

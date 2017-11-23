@@ -5,26 +5,28 @@ import logging
 
 from collections import OrderedDict, namedtuple
 
-from ..core.inventory import Xcvr
+from ..core.inventory import Xcvr, Psu
 from ..core.types import Gpio, ResetGpio, NamedGpio
 from ..core.utils import sysfsFmtHex, sysfsFmtDec, sysfsFmtStr, simulateWith, \
                          inSimulation
 
 from common import PciComponent, KernelDriver, PciKernelDriver
 
-class ScdKernelXcvr(Xcvr):
-   def __init__(self, portNum, xcvrType, eepromAddr, bus, driver):
-      Xcvr.__init__(self, portNum, xcvrType, eepromAddr, bus)
+class ScdSysfsGroup(object):
+   def __init__(self, objNum, typeStr, driver):
       self.driver = driver
-      self.typeStr = 'qsfp' if xcvrType == Xcvr.QSFP else 'sfp'
-      self.prefix = '%s%d_' % (self.typeStr, portNum)
+      self.prefix = '%s%d_' % (typeStr, objNum)
       self.prefixPath = os.path.join(driver.getSysfsPath(), self.prefix)
+
+class ScdSysfsRW(ScdSysfsGroup):
+   def __init__(self, objNum, typeStr, driver):
+      ScdSysfsGroup.__init__(self, objNum, typeStr, driver)
 
    def getSysfsGpio(self, name):
       return '%s%s' % (self.prefixPath, name)
 
    def readValueSim(self, name):
-      logging.info('read xcvr %s entry %s', self.prefix, name)
+      logging.info('read sysfs %s entry %s', self.prefix, name)
       return "1"
 
    @simulateWith(readValueSim)
@@ -33,7 +35,7 @@ class ScdKernelXcvr(Xcvr):
          return f.read().rstrip()
 
    def writeValueSim(self, name, value):
-      logging.info('write xcvr %s entry %s value %s', self.prefix, name, value)
+      logging.info('write sysfs %s entry %s value %s', self.prefix, name, value)
       return True
 
    @simulateWith(writeValueSim)
@@ -42,25 +44,10 @@ class ScdKernelXcvr(Xcvr):
          f.write(str(value))
       return True
 
-   def getPresence(self):
-      return self.readValue('present') == '1'
+class ScdSysfsOldRW(ScdSysfsRW):
+   def __init__(self, objNum, typeStr, driver):
+      ScdSysfsRW.__init__(self, objNum, typeStr, driver)
 
-   def getLowPowerMode(self):
-      if self.xcvrType == Xcvr.SFP:
-         return False
-      return self.readValue('lp_mode') == '1'
-
-   def setLowPowerMode(self, value):
-      if self.xcvrType == Xcvr.SFP:
-         return False
-      return self.writeValue('lp_mode', '1' if value else '0')
-
-   def reset(self, value):
-      if self.xcvrType == Xcvr.SFP:
-         return False
-      return self.writeValue('reset', '1' if value else '0')
-
-class ScdOldKernelXcvr(ScdKernelXcvr):
    def readValue(self, name):
       gpio =  self.getSysfsGpio(name)
       directionPath = os.path.join(gpio, 'direction')
@@ -79,6 +66,44 @@ class ScdOldKernelXcvr(ScdKernelXcvr):
       with open(os.path.join(gpio, 'value'), 'w') as f:
          f.write(str(value))
       return True
+
+class ScdKernelXcvr(Xcvr):
+   def __init__(self, portNum, xcvrType, eepromAddr, bus, driver, sysfsRWClass):
+      Xcvr.__init__(self, portNum, xcvrType, eepromAddr, bus)
+      typeStr = 'qsfp' if xcvrType == Xcvr.QSFP else 'sfp'
+      self.rw = sysfsRWClass(portNum, typeStr, driver)
+
+   def getPresence(self):
+      return self.rw.readValue('present') == '1'
+
+   def getLowPowerMode(self):
+      if self.xcvrType == Xcvr.SFP:
+         return False
+      return self.rw.readValue('lp_mode') == '1'
+
+   def setLowPowerMode(self, value):
+      if self.xcvrType == Xcvr.SFP:
+         return False
+      return self.rw.writeValue('lp_mode', '1' if value else '0')
+
+   def reset(self, value):
+      if self.xcvrType == Xcvr.SFP:
+         return False
+      return self.rw.writeValue('reset', '1' if value else '0')
+
+class ScdKernelPsu(Psu):
+   def __init__(self, portNum, driver, sysfsRWClass, statusSupported):
+      self.rw = sysfsRWClass(portNum, 'psu', driver)
+      self.statusSupported = statusSupported
+
+   def getPresence(self):
+      return self.rw.readValue('present') == '1'
+
+   def getStatus(self):
+      if self.statusSupported:
+         return self.rw.readValue('status') == '1'
+      else:
+         return self.getPresence()
 
 class ScdHwmonKernelDriver(PciKernelDriver):
    def __init__(self, scd):
@@ -332,10 +357,10 @@ class Scd(PciComponent):
       self.addDriver(KernelDriver, 'scd')
       if newDriver:
          self.addDriver(ScdHwmonKernelDriver)
-         self.xcvrCls = ScdKernelXcvr
+         self.rwCls = ScdSysfsRW
       else:
          self.addDriver(ScdKernelDriver)
-         self.xcvrCls = ScdOldKernelXcvr
+         self.rwCls = ScdSysfsOldRW
       self.masters = OrderedDict()
       self.resets = []
       self.gpios = []
@@ -390,7 +415,8 @@ class Scd(PciComponent):
             Gpio(8, False, True),
          ]
       }
-      return self.xcvrCls(xcvrId, Xcvr.QSFP, eepromAddr, bus, self.drivers[1])
+      return ScdKernelXcvr(xcvrId, Xcvr.QSFP, eepromAddr, bus, self.drivers[1],
+                           self.rwCls)
 
    def addSfp(self, addr, xcvrId, bus, eepromAddr=0x50):
       self.sfps[addr] = {
@@ -408,7 +434,11 @@ class Scd(PciComponent):
             Gpio(8, False, False),
          ]
       }
-      return self.xcvrCls(xcvrId, Xcvr.SFP, eepromAddr, bus, self.drivers[1])
+      return ScdKernelXcvr(xcvrId, Xcvr.SFP, eepromAddr, bus, self.drivers[1],
+                           self.rwCls)
+
+   def createPsu(self, psuId, statusSupported):
+      return ScdKernelPsu(psuId, self.drivers[1], self.rwCls, statusSupported)
 
    def allGpios(self):
       def zipXcvr(xcvrType, gpio_names, entries):
