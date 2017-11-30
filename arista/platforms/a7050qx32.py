@@ -21,7 +21,7 @@ class Cloverdale(Platform):
 
       self.inventory.addPorts(qsfps=self.allQsfps)
 
-      self.addDriver(KernelDriver, 'raven-fan-driver')
+      self.addDriver(KernelDriver, 'raven-fan-driver', '/sys/class/hwmon/hwmon1')
 
       switchChip = SwitchChip(PciAddr(bus=0x02))
       self.addComponent(switchChip)
@@ -30,8 +30,8 @@ class Cloverdale(Platform):
       self.addComponent(scd)
 
       scd.addComponents([
-         I2cKernelComponent(I2cAddr(2, 0x4c), 'max6658'),
-         I2cKernelComponent(I2cAddr(3, 0x48), 'lm73'),
+         I2cKernelComponent(I2cAddr(2, 0x4c), 'max6658', '/sys/class/hwmon/hwmon2'),
+         I2cKernelComponent(I2cAddr(3, 0x48), 'lm73', '/sys/class/hwmon/hwmon3'),
          Ds460(I2cAddr(5, 0x58), priority=Priority.BACKGROUND),
          Ds460(I2cAddr(6, 0x58), priority=Priority.BACKGROUND),
 

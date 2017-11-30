@@ -22,7 +22,7 @@ class Clearlake(Platform):
 
       self.inventory.addPorts(qsfps=self.allQsfps)
 
-      self.addDriver(KernelDriver, 'crow-fan-driver')
+      self.addDriver(KernelDriver, 'crow-fan-driver', '/sys/class/hwmon/hwmon1')
 
       switchChip = SwitchChip(PciAddr(bus=0x01))
       self.addComponent(switchChip)
@@ -31,9 +31,9 @@ class Clearlake(Platform):
       self.addComponent(scd)
 
       scd.addComponents([
-         I2cKernelComponent(I2cAddr(2, 0x4c), 'max6658'),
-         I2cKernelComponent(I2cAddr(3, 0x4c), 'max6658'),
-         I2cKernelComponent(I2cAddr(3, 0x60), 'crow_cpld'),
+         I2cKernelComponent(I2cAddr(2, 0x4c), 'max6658', '/sys/class/hwmon/hwmon2'),
+         I2cKernelComponent(I2cAddr(3, 0x4c), 'max6658', '/sys/class/hwmon/hwmon3'),
+         I2cKernelComponent(I2cAddr(3, 0x60), 'crow_cpld', '/sys/class/hwmon/hwmon4'),
          I2cKernelComponent(I2cAddr(3, 0x4e), 'pmbus',
                             priority=Priority.BACKGROUND), # ucd90120A
          I2cKernelComponent(I2cAddr(5, 0x58), 'pmbus',

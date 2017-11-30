@@ -19,9 +19,9 @@ class I2cComponent(Component):
       super(I2cComponent, self).__init__(addr=addr, **kwargs)
 
 class I2cKernelComponent(I2cComponent):
-   def __init__(self, addr, name, **kwargs):
+   def __init__(self, addr, name, waitFile=None, **kwargs):
       super(I2cKernelComponent, self).__init__(addr, **kwargs)
-      self.addDriver(I2cKernelDriver, name)
+      self.addDriver(I2cKernelDriver, name, waitFile)
 
 class PciKernelDriver(KernelDriver):
    def __init__(self, component, name, args=None):
@@ -32,9 +32,9 @@ class PciKernelDriver(KernelDriver):
       return os.path.join('/sys/bus/pci/devices', str(self.component.addr))
 
 class I2cKernelDriver(KernelDriver):
-   def __init__(self, component, name):
+   def __init__(self, component, name, waitFile=None):
       assert isinstance(component, I2cComponent)
-      super(I2cKernelDriver, self).__init__(component, None)
+      super(I2cKernelDriver, self).__init__(component, None, waitFile)
       self.name = name
 
    def getSysfsPath(self):
@@ -56,6 +56,7 @@ class I2cKernelDriver(KernelDriver):
       else:
          with open(path, 'w') as f:
             f.write('%s 0x%02x' % (self.name, self.component.addr.address))
+         self.waitFileReady()
 
    def clean(self):
       # i2c kernel devices are automatically cleaned when the module is removed

@@ -1,7 +1,9 @@
 from __future__ import print_function
 
 import logging
+import os
 import subprocess
+import time
 
 from utils import inDebug, inSimulation
 
@@ -58,14 +60,32 @@ class Driver(object):
 
 class KernelDriver(Driver):
    # TODO: handle multiple kernel modules
-   def __init__(self, component, module, args=None):
+   def __init__(self, component, module, waitFile=None, args=None):
       super(KernelDriver, self).__init__(component)
       self.component = component
       self.module = module
       self.args = args if args is not None else []
+      self.waitFile = waitFile
+
+   def waitFileReady(self):
+      if not self.waitFile:
+         return
+
+      logging.debug('Starting driver. Waiting file %s.', self.waitFile)
+
+      count = 0
+      while not os.path.exists(self.waitFile) and count <= 20:
+         time.sleep(0.05)
+         count = count + 1
+         logging.debug('Starting driver. Waiting file %s attempt %d.',
+                       self.waitFile, count)
+      if not os.path.exists(self.waitFile):
+         logging.error('Starting driver. Waiting file %s failed.',
+                       self.waitFile)
 
    def setup(self):
       modprobe(self.module, self.args)
+      self.waitFileReady()
 
    def clean(self):
       if self.loaded():
