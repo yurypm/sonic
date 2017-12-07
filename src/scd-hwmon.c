@@ -299,6 +299,11 @@ static s32 smbus_check_resp(union response_reg resp, u32 tid)
    const char *error;
    int error_ret = -EIO;
 
+   if (resp.reg == 0xffffffff) {
+      error = "fe";
+      error_ret = -EAGAIN;
+      goto fail;
+   }
    if (resp.ack_error) {
       error = "ack";
       goto fail;
@@ -660,6 +665,7 @@ static int scd_smbus_master_add(struct scd_context *ctx, u32 addr, u32 id,
    master->req = addr + SMBUS_REQUEST_OFFSET;
    master->cs = addr + SMBUS_CONTROL_STATUS_OFFSET;
    master->resp = addr + SMBUS_RESPONSE_OFFSET;
+   master->max_retries = MASTER_DEFAULT_MAX_RETRIES;
    INIT_LIST_HEAD(&master->bus_list);
 
    for (i = 0; i < bus_count; ++i) {
